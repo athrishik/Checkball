@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CheckBall - Your Personalized Sports Hub</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <span class="logo-icon">⚽</span>
+                <h1>CheckBall</h1>
+            </div>
+            <p class="tagline">Your personalized sports hub - prioritizing today's games, upcoming matches, and recent results</p>
+            
+            <!-- Check In Button moved to header -->
+            <div class="header-controls">
+                <button id="refresh-btn" class="check-in-button" onclick="refreshScores()">
+                    <span class="refresh-icon">🔄</span>
+                    Check In
+                </button>
+                <button class="reset-btn" onclick="resetAllWidgets()">
+                    <span>🔄</span> Reset
+                </button>
+            </div>
+        </header>
+
+        <!-- Dashboard Grid -->
+        <div class="dashboard">
+            <!-- Widget 1 -->
+            <div class="widget" id="widget-0">
+                <div class="config-mode">
+                    <select class="sport-select" data-widget="0" onchange="onSportChange(0)">
+                        <option value="">Select a sport</option>
+                        <option value="nba">🏀 NBA</option>
+                        <option value="wnba">🏀 WNBA</option>
+                        <option value="nfl">🏈 NFL</option>
+                        <option value="mls">⚽ MLS</option>
+                        <option value="premier league">⚽ Premier League</option>
+                        <option value="la liga">⚽ La Liga</option>
+                        <option value="mlb">⚾ MLB</option>
+                        <option value="nhl">🏒 NHL</option>
+                    </select>
+                    <select class="team-select" data-widget="0" disabled onchange="onTeamChange(0)">
+                        <option value="">Choose sport first</option>
+                    </select>
+                </div>
+                <div class="score-display" style="display:none;">
+                    <div class="widget-actions">
+                        <button class="reconfigure-btn" onclick="reconfigureWidget(0)" title="Reconfigure this widget">
+                            ⚙️
+                        </button>
+                        <button class="details-btn" onclick="openGameDetails(0)" title="Get more details about this game">
+                            🔍
+                        </button>
+                    </div>
+                    <div class="team-info">
+                        <div class="team-name" id="team-name-0"></div>
+                        <div class="score" id="team-score-0">0</div>
+                    </div>
+                    <div class="vs">VS</div>
+                    <div class="opponent-info">
+                        <div class="team-name" id="opponent-name-0"></div>
+                        <div class="score" id="opponent-score-0">0</div>
+                    </div>
+                    <div class="game-status" id="status-0">FINAL</div>
+                    <div class="venue-info" id="venue-0" style="display:none;"></div>
+                    <div class="next-game-info" id="next-game-0" style="display:none;"></div>
+                    <div class="last-updated" id="updated-0"></div>
+                </div>
+            </div>
+
+            <!-- Widget 2 -->
+            <div class="widget" id="widget-1">
+                <div class="config-mode">
+                    <select class="sport-select" data-widget="1" onchange="onSportChange(1)">
+                        <option value="">Select a sport</option>
+                        <option value="nba">🏀 NBA</option>
+                        <option value="wnba">🏀 WNBA</option>
+                        <option value="nfl">🏈 NFL</option>
+                        <option value="mls">⚽ MLS</option>
+                        <option value="premier league">⚽ Premier League</option>
+                        <option value="la liga">⚽ La Liga</option>
+                        <option value="mlb">⚾ MLB</option>
+                        <option value="nhl">🏒 NHL</option>
+                    </select>
+                    <select class="team-select" data-widget="1" disabled onchange="onTeamChange(1)">
+                        <option value="">Choose sport first</option>
+                    </select>
+                </div>
+                <div class="score-display" style="display:none;">
+                    <div class="widget-actions">
+                        <button class="reconfigure-btn" onclick="reconfigureWidget(1)" title="Reconfigure this widget">
+                            ⚙️
+                        </button>
+                        <button class="details-btn" onclick="openGameDetails(1)" title="Get more details about this game">
+                            🔍
+                        </button>
+                    </div>
+                    <div class="team-info">
+                        <div class="team-name" id="team-name-1"></div>
+                        <div class="score" id="team-score-1">0</div>
+                    </div>
+                    <div class="vs">VS</div>
+                    <div class="opponent-info">
+                        <div class="team-name" id="opponent-name-1"></div>
+                        <div class="score" id="opponent-score-1">0</div>
+                    </div>
+                    <div class="game-status" id="status-1">FINAL</div>
+                    <div class="venue-info" id="venue-1" style="display:none;"></div>
+                    <div class="next-game-info" id="next-game-1" style="display:none;"></div>
+                    <div class="last-updated" id="updated-1"></div>
+                </div>
+            </div>
+
+            <!-- Widget 3 -->
+            <div class="widget" id="widget-2">
+                <div class="config-mode">
+                    <select class="sport-select" data-widget="2" onchange="onSportChange(2)">
+                        <option value="">Select a sport</option>
+                        <option value="nba">🏀 NBA</option>
+                        <option value="wnba">🏀 WNBA</option>
+                        <option value="nfl">🏈 NFL</option>
+                        <option value="mls">⚽ MLS</option>
+                        <option value="premier league">⚽ Premier League</option>
+                        <option value="la liga">⚽ La Liga</option>
+                        <option value="mlb">⚾ MLB</option>
+                        <option value="nhl">🏒 NHL</option>
+                    </select>
+                    <select class="team-select" data-widget="2" disabled onchange="onTeamChange(2)">
+                        <option value="">Choose sport first</option>
+                    </select>
+                </div>
+                <div class="score-display" style="display:none;">
+                    <div class="widget-actions">
+                        <button class="reconfigure-btn" onclick="reconfigureWidget(2)" title="Reconfigure this widget">
+                            ⚙️
+                        </button>
+                        <button class="details-btn" onclick="openGameDetails(2)" title="Get more details about this game">
+                            🔍
+                        </button>
+                    </div>
+                    <div class="team-info">
+                        <div class="team-name" id="team-name-2"></div>
+                        <div class="score" id="team-score-2">0</div>
+                    </div>
+                    <div class="vs">VS</div>
+                    <div class="opponent-info">
+                        <div class="team-name" id="opponent-name-2"></div>
+                        <div class="score" id="opponent-score-2">0</div>
+                    </div>
+                    <div class="game-status" id="status-2">FINAL</div>
+                    <div class="venue-info" id="venue-2" style="display:none;"></div>
+                    <div class="next-game-info" id="next-game-2" style="display:none;"></div>
+                    <div class="last-updated" id="updated-2"></div>
+                </div>
+            </div>
+
+            <!-- Widget 4 -->
+            <div class="widget" id="widget-3">
+                <div class="config-mode">
+                    <select class="sport-select" data-widget="3" onchange="onSportChange(3)">
+                        <option value="">Select a sport</option>
+                        <option value="nba">🏀 NBA</option>
+                        <option value="wnba">🏀 WNBA</option>
+                        <option value="nfl">🏈 NFL</option>
+                        <option value="mls">⚽ MLS</option>
+                        <option value="premier league">⚽ Premier League</option>
+                        <option value="la liga">⚽ La Liga</option>
+                        <option value="mlb">⚾ MLB</option>
+                        <option value="nhl">🏒 NHL</option>
+                    </select>
+                    <select class="team-select" data-widget="3" disabled onchange="onTeamChange(3)">
+                        <option value="">Choose sport first</option>
+                    </select>
+                </div>
+                <div class="score-display" style="display:none;">
+                    <div class="widget-actions">
+                        <button class="reconfigure-btn" onclick="reconfigureWidget(3)" title="Reconfigure this widget">
+                            ⚙️
+                        </button>
+                        <button class="details-btn" onclick="openGameDetails(3)" title="Get more details about this game">
+                            🔍
+                        </button>
+                    </div>
+                    <div class="team-info">
+                        <div class="team-name" id="team-name-3"></div>
+                        <div class="score" id="team-score-3">0</div>
+                    </div>
+                    <div class="vs">VS</div>
+                    <div class="opponent-info">
+                        <div class="team-name" id="opponent-name-3"></div>
+                        <div class="score" id="opponent-score-3">0</div>
+                    </div>
+                    <div class="game-status" id="status-3">FINAL</div>
+                    <div class="venue-info" id="venue-3" style="display:none;"></div>
+                    <div class="next-game-info" id="next-game-3" style="display:none;"></div>
+                    <div class="last-updated" id="updated-3"></div>
+                </div>
+        </div>
+
+        </div>
+
+        <!-- Bottom Footer with Developer Credit -->
+        <footer class="footer">
+            <div class="developer-section">
+                <p class="developed-by">Developed by <strong>Hrishik Kunduru</strong></p>
+                <p class="support-text">Show support for the creator by buying them a coffee!</p>
+                <a href="https://venmo.com/u/atHrishik" target="_blank" class="coffee-button">
+                    ☕ Buy me a coffee
+                </a>
+            </div>
+            <div class="footer-divider"></div>
+            <p class="footer-tagline">Stay connected with your favorite sports • Manual refresh for better performance</p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
