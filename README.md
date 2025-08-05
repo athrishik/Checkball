@@ -6,10 +6,6 @@ A smart sports dashboard that prioritizes what matters most to fans - today's ga
 
 
 
-!\[CheckBall Screenshot](https://via.placeholder.com/800x400/8B45FF/FFFFFF?text=CheckBall+Sports+Dashboard)
-
-
-
 \## ✨ Features
 
 
@@ -64,7 +60,7 @@ A smart sports dashboard that prioritizes what matters most to fans - today's ga
 
 ```bash
 
-git clone https://github.com/yourusername/checkball.git
+git clone https://github.com/athrishik/checkball.git
 
 cd checkball
 
@@ -293,4 +289,5 @@ Project Link: \[https://github.com/athrishik/checkball](https://github.com/athri
 
 
 ⭐
+
 
