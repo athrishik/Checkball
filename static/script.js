@@ -1,9 +1,17 @@
 // Global configuration object to store user preferences
 let userConfig = {};
 
+// Store game data for details functionality
+let widgetGameData = {};
+
+// Game modal functionality
+let gameModal = null;
+
 // Initialize the dashboard when page loads
 document.addEventListener('DOMContentLoaded', function() {
     loadUserConfig();
+    addTeamSearch();
+    makeWidgetsClickable();
 });
 
 // Load user configuration from cookies
@@ -63,7 +71,7 @@ function onSportChange(widgetIndex) {
     const teamSelect = document.querySelector(`[data-widget="${widgetIndex}"].team-select`);
     const sport = sportSelect.value;
     
-    console.log(`Sport changed to: ${sport} for widget ${widgetIndex}`); // Debug log
+    console.log(`Sport changed to: ${sport} for widget ${widgetIndex}`);
     
     if (sport) {
         // Enable team dropdown and load teams
@@ -73,11 +81,11 @@ function onSportChange(widgetIndex) {
         // Fetch teams for the selected sport
         fetch(`/api/teams/${encodeURIComponent(sport)}`)
             .then(response => {
-                console.log(`API response status: ${response.status}`); // Debug log
+                console.log(`API response status: ${response.status}`);
                 return response.json();
             })
             .then(teams => {
-                console.log(`Received ${teams.length} teams:`, teams); // Debug log
+                console.log(`Received ${teams.length} teams:`, teams);
                 teamSelect.innerHTML = '<option value="">Select a team</option>';
                 teams.forEach(team => {
                     const option = document.createElement('option');
@@ -233,8 +241,6 @@ function formatGameDate(dateString) {
         minute: '2-digit',
         hour12: true
     };
-    
-    console.log(`Game date: ${gameDate}, Now: ${now}, Diff days: ${diffDays}`); // Debug log
     
     if (diffDays === 0) {
         return `Today at ${gameDate.toLocaleTimeString('en-US', timeOptions)}`;
@@ -410,28 +416,6 @@ function resetAllWidgets() {
     }
 }
 
-// Optional: Auto-refresh scores every 5 minutes for live games only (commented out by default)
-// Uncomment the lines below if you want automatic refresh for live games only
-/*
-function autoRefreshLiveGames() {
-    for (let widgetId in userConfig) {
-        const widgetIndex = parseInt(widgetId.split('_')[1]);
-        const widget = userConfig[widgetId];
-        
-        if (widget.sport && widget.team) {
-            // Only refresh if the widget is showing a live game
-            const statusElement = document.getElementById(`status-${widgetIndex}`);
-            if (statusElement && statusElement.textContent.includes('LIVE')) {
-                fetchScores(widgetIndex, widget.sport, widget.team);
-            }
-        }
-    }
-}
-
-// Set up auto-refresh interval for live games only (5 minutes)
-let refreshInterval = setInterval(autoRefreshLiveGames, 5 * 60 * 1000);
-*/
-
 // Individual widget reconfiguration
 function reconfigureWidget(widgetIndex) {
     const widget = document.getElementById(`widget-${widgetIndex}`);
@@ -458,24 +442,6 @@ function reconfigureWidget(widgetIndex) {
     widget.classList.remove('loading', 'live-game');
 }
 
-// Open game details in new tab
-function openGameDetails(widgetIndex) {
-    const teamName = document.getElementById(`team-name-${widgetIndex}`).textContent;
-    const opponentName = document.getElementById(`opponent-name-${widgetIndex}`).textContent;
-    
-    if (teamName && opponentName && teamName !== 'No games found' && opponentName !== 'No games found') {
-        // Create search query for the matchup
-        const searchQuery = `${teamName} vs ${opponentName}`;
-        const encodedQuery = encodeURIComponent(searchQuery);
-        
-        // Open Google search in new tab
-        window.open(`https://www.google.com/search?q=${encodedQuery}`, '_blank');
-    }
-}
-
-// Store game data for details functionality
-let widgetGameData = {};
-
 // Enhanced search functionality for team dropdowns
 function addTeamSearch() {
     const teamSelects = document.querySelectorAll('.team-select');
@@ -496,10 +462,40 @@ function addTeamSearch() {
     });
 }
 
-// Initialize enhanced features when DOM is loaded
-document.addEventListener('DOMContentLoaded', function() {
-    addTeamSearch();
-});
+// Make widgets clickable to open modal
+function makeWidgetsClickable() {
+    for (let i = 0; i < 4; i++) {
+        const widget = document.getElementById(`widget-${i}`);
+        const scoreDisplay = widget.querySelector('.score-display');
+        
+        scoreDisplay.addEventListener('click', function(e) {
+            // Don't trigger if clicking on action buttons
+            if (e.target.closest('.widget-actions')) {
+                return;
+            }
+            
+            // Only open details if there's valid game data
+            const gameData = widgetGameData[i];
+            if (gameData && gameData.opponent !== 'No games found' && gameData.opponent !== 'Error loading data') {
+                openGameModal(i);
+            }
+        });
+        
+        // Add hover effect to show it's clickable
+        scoreDisplay.addEventListener('mouseenter', function() {
+            if (widgetGameData[i] && widgetGameData[i].opponent !== 'No games found') {
+                this.style.cursor = 'pointer';
+                this.style.transform = 'scale(1.02)';
+                this.style.transition = 'transform 0.2s ease';
+            }
+        });
+        
+        scoreDisplay.addEventListener('mouseleave', function() {
+            this.style.cursor = 'default';
+            this.style.transform = 'scale(1)';
+        });
+    }
+}
 
 // Enhanced game details with modal functionality
 function openGameDetails(widgetIndex) {
@@ -512,9 +508,6 @@ function openGameDetails(widgetIndex) {
     // Open the modal instead of Google search
     openGameModal(widgetIndex);
 }
-
-// Game modal functionality
-let gameModal = null;
 
 function createGameModal() {
     if (gameModal) return; // Already created
@@ -569,34 +562,171 @@ function closeGameModal() {
     }
 }
 
+function generateLeadersDisplay(leaders) {
+    console.log('=== LEADERS DISPLAY DEBUG ===');
+    console.log('Leaders data received:', leaders);
+    console.log('Type:', typeof leaders);
+    console.log('Is Array:', Array.isArray(leaders));
+    console.log('Keys:', Object.keys(leaders || {}));
+    
+    if (!leaders || typeof leaders !== 'object' || Object.keys(leaders).length === 0) {
+        console.log('No leaders data available - returning fallback message');
+        return '<p>No game leaders data available</p>';
+    }
+    
+    const leaderEntries = Object.entries(leaders);
+    console.log('Leader entries:', leaderEntries);
+    
+    if (leaderEntries.length === 0) {
+        return '<p>No statistical leaders found</p>';
+    }
+    
+    // Filter out empty or invalid categories
+    const validEntries = leaderEntries.filter(([category, categoryLeaders]) => {
+        console.log(`Checking category "${category}":`, categoryLeaders);
+        
+        if (!Array.isArray(categoryLeaders)) {
+            console.log(`  - Not an array, skipping`);
+            return false;
+        }
+        
+        if (categoryLeaders.length === 0) {
+            console.log(`  - Empty array, skipping`);
+            return false;
+        }
+        
+        // Check if any leaders have valid data
+        const hasValidData = categoryLeaders.some(leader => {
+            const hasName = leader.name && leader.name !== 'Unknown' && leader.name !== 'Unknown Player';
+            const hasValue = leader.value && leader.value !== '0';
+            console.log(`    - Leader check: name="${leader.name}", value="${leader.value}", valid=${hasName && hasValue}`);
+            return hasName && hasValue;
+        });
+        
+        console.log(`  - Category "${category}" has valid data: ${hasValidData}`);
+        return hasValidData;
+    });
+    
+    console.log('Valid entries after filtering:', validEntries.map(([cat, leaders]) => `${cat} (${leaders.length})`));
+    
+    if (validEntries.length === 0) {
+        return `
+            <div class="no-leaders-message">
+                <p>📊 Detailed player statistics not available</p>
+                <p style="font-size: 0.8rem; color: rgba(255,255,255,0.5); margin-top: 0.5rem;">
+                    Game leaders data may not be available for this game type or timing
+                </p>
+            </div>
+        `;
+    }
+    
+    return validEntries.slice(0, 6).map(([category, categoryLeaders]) => {
+        console.log(`Rendering category: ${category}`, categoryLeaders);
+        
+        // Filter and clean the leaders for this category
+        const cleanLeaders = categoryLeaders
+            .filter(leader => {
+                const isValid = leader.name && 
+                              leader.name !== 'Unknown' && 
+                              leader.name !== 'Unknown Player' &&
+                              leader.value && 
+                              leader.value !== '0';
+                console.log(`    - Leader "${leader.name}" valid: ${isValid}`);
+                return isValid;
+            })
+            .slice(0, 3); // Top 3 leaders per category
+        
+        if (cleanLeaders.length === 0) {
+            return `
+                <div class="leader-category">
+                    <div class="category-title">${category}</div>
+                    <div class="leader-item">
+                        <span class="leader-name">No data available</span>
+                    </div>
+                </div>
+            `;
+        }
+        
+        return `
+            <div class="leader-category">
+                <div class="category-title">${category}</div>
+                ${cleanLeaders.map((leader, index) => {
+                    console.log(`      - Rendering leader ${index}:`, leader);
+                    return `
+                        <div class="leader-item">
+                            <span class="leader-name">${leader.name || 'Unknown'}</span>
+                            <span class="leader-team">${leader.team || ''}</span>
+                            <span class="leader-value">${leader.value || '0'}</span>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+    }).join('');
+}
+
+// Enhanced loadGameDetails function with better error handling
 async function loadGameDetails(widgetIndex) {
     const gameData = widgetGameData[widgetIndex];
     const sport = userConfig[`widget_${widgetIndex}`]?.sport;
+    const team = userConfig[`widget_${widgetIndex}`]?.team;
     const modalContent = document.getElementById('gameModalContent');
+    
+    console.log(`=== LOADING GAME DETAILS ===`);
+    console.log(`Widget: ${widgetIndex}, Sport: ${sport}, Team: ${team}`);
     
     try {
         // Show loading state
         modalContent.innerHTML = `
             <div class="loading-spinner">
                 <div class="spinner-icon">${getSportEmoji(sport)}</div>
-                <p>Loading game details...</p>
+                <p>Loading detailed game data...</p>
+                <div class="loading-progress"></div>
             </div>
         `;
 
-        // For now, we'll use the existing game data and enhance it
-        // Later you could add a separate API endpoint for detailed stats
+        // Fetch detailed game data from your API endpoint
+        const response = await fetch(`/api/game-details/${encodeURIComponent(sport)}/${encodeURIComponent(team)}`);
+        const detailedData = await response.json();
         
-        await new Promise(resolve => setTimeout(resolve, 800)); // Simulate loading
+        console.log('Detailed data response:', detailedData);
         
-        displayGameDetails(gameData, sport, widgetIndex);
+        if (detailedData.error) {
+            throw new Error(detailedData.error);
+        }
+        
+        // Check what data we actually received
+        console.log('Detailed data structure:');
+        console.log('- Box score:', detailedData.box_score?.length || 0, 'teams');
+        console.log('- Leaders:', Object.keys(detailedData.leaders || {}).length, 'categories');
+        console.log('- Leaders data:', detailedData.leaders);
+        
+        displayDetailedGameData(detailedData, sport, widgetIndex);
 
     } catch (error) {
+        console.error('Error loading detailed game data:', error);
+        
+        // Enhanced fallback with more debugging info
         modalContent.innerHTML = `
-            <div class="error-message">
-                <h3>Error Loading Game Details</h3>
-                <p>Unable to fetch game information. Please try again later.</p>
+            <div class="error-fallback">
+                <div class="fallback-header">
+                    <h3>⚠️ Detailed Data Unavailable</h3>
+                    <p>Showing basic game information</p>
+                    <p style="font-size: 0.8rem; color: rgba(255,255,255,0.5);">
+                        Error: ${error.message}
+                    </p>
+                </div>
+                <div id="fallbackContent"></div>
             </div>
         `;
+        
+        // Show basic game data in a nice format
+        setTimeout(() => {
+            const fallbackContent = document.getElementById('fallbackContent');
+            if (fallbackContent) {
+                displayBasicGameData(gameData, sport, widgetIndex, fallbackContent);
+            }
+        }, 100);
     }
 }
 
@@ -614,16 +744,16 @@ function getSportEmoji(sport) {
     return emojis[sport?.toLowerCase()] || '🏀';
 }
 
-function displayGameDetails(gameData, sport, widgetIndex) {
+function displayDetailedGameData(detailedData, sport, widgetIndex) {
     const modalContent = document.getElementById('gameModalContent');
-    const isUpcoming = gameData.status_type === 'STATUS_SCHEDULED' && gameData.team_score === '-';
-    const isLive = gameData.status_type === 'STATUS_IN_PROGRESS' || gameData.status_type === 'STATUS_HALFTIME';
+    const isCompleted = detailedData.status?.completed || false;
+    const isLive = detailedData.status?.state === 'STATUS_IN_PROGRESS' || detailedData.status?.state === 'STATUS_HALFTIME';
     
-    // Format date for display
+    // Format game date
     let gameDateTime = 'Unknown';
-    if (gameData.game_date_iso) {
+    if (detailedData.date) {
         try {
-            const date = new Date(gameData.game_date_iso);
+            const date = new Date(detailedData.date);
             gameDateTime = date.toLocaleDateString('en-US', { 
                 weekday: 'long', 
                 year: 'numeric', 
@@ -639,60 +769,291 @@ function displayGameDetails(gameData, sport, widgetIndex) {
     }
     
     modalContent.innerHTML = `
-        <div class="game-header">
-            <div class="game-matchup">${gameData.team} vs ${gameData.opponent}</div>
-            <div class="game-info">
-                ${gameData.status} | ${gameDateTime}<br>
-                ${gameData.venue && gameData.venue !== 'TBD' ? `📍 ${gameData.venue}` : ''}
+        <div class="detailed-game-header">
+            <div class="game-matchup-detailed">
+                ${detailedData.away_team.name} @ ${detailedData.home_team.name}
+            </div>
+            <div class="game-status-badge ${isLive ? 'live' : isCompleted ? 'final' : 'upcoming'}">
+                ${isLive ? '🔴 LIVE' : isCompleted ? '✅ FINAL' : '📅 SCHEDULED'}
+                ${detailedData.status?.clock ? ` • ${detailedData.status.clock}` : ''}
+                ${detailedData.status?.period > 0 ? ` • Period ${detailedData.status.period}` : ''}
+            </div>
+            <div class="game-meta">
+                ${gameDateTime}<br>
+                ${detailedData.venue?.name ? `📍 ${detailedData.venue.name}` : ''}
+                ${detailedData.venue?.city ? `, ${detailedData.venue.city}` : ''}
             </div>
         </div>
 
-        <div class="stats-section">
-            <div class="stats-title">${isUpcoming ? 'Upcoming Game' : isLive ? 'Live Score' : 'Final Score'}</div>
-            ${!isUpcoming ? `
-                <div class="score-display-modal">
-                    <div class="team-score-modal">
-                        <div class="team-name-modal">${gameData.team}</div>
-                        <div class="score-modal">${gameData.team_score}</div>
+        <div class="team-matchup-section">
+            <div class="team-display">
+                <div class="team-card away-team">
+                    ${detailedData.away_team.logo ? `<img src="${detailedData.away_team.logo}" alt="${detailedData.away_team.name}" class="team-logo">` : ''}
+                    <div class="team-info-detailed">
+                        <div class="team-name-detailed">${detailedData.away_team.name}</div>
+                        <div class="team-record">${detailedData.away_team.short_name}</div>
                     </div>
-                    <div class="vs-modal">vs</div>
-                    <div class="team-score-modal">
-                        <div class="team-name-modal">${gameData.opponent}</div>
-                        <div class="score-modal">${gameData.opponent_score}</div>
+                    <div class="team-score-detailed">${detailedData.away_team.score}</div>
+                </div>
+                
+                <div class="vs-divider">VS</div>
+                
+                <div class="team-card home-team">
+                    ${detailedData.home_team.logo ? `<img src="${detailedData.home_team.logo}" alt="${detailedData.home_team.name}" class="team-logo">` : ''}
+                    <div class="team-info-detailed">
+                        <div class="team-name-detailed">${detailedData.home_team.name}</div>
+                        <div class="team-record">${detailedData.home_team.short_name}</div>
                     </div>
+                    <div class="team-score-detailed">${detailedData.home_team.score}</div>
                 </div>
-            ` : `
-                <div class="upcoming-game-display">
-                    <div class="upcoming-teams">${gameData.team} vs ${gameData.opponent}</div>
-                    <div class="game-time">${formatGameDate(gameData.game_date_iso)}</div>
-                </div>
-            `}
+            </div>
         </div>
 
-        ${gameData.next_game ? `
+        ${detailedData.box_score && detailedData.box_score.length > 0 ? `
             <div class="stats-section">
-                <div class="stats-title">Next Game</div>
-                <div class="next-game-modal">
-                    <div class="next-opponent">vs ${gameData.next_game.opponent}</div>
-                    <div class="next-date">${formatGameDate(gameData.next_game.game_date)}</div>
-                    ${gameData.next_game.venue ? `<div class="next-venue">📍 ${gameData.next_game.venue}</div>` : ''}
+                <div class="stats-title">📊 Team Statistics</div>
+                <div class="team-stats-grid">
+                    ${generateTeamStatsComparison(detailedData.box_score)}
+                </div>
+            </div>
+        ` : ''}
+
+        ${detailedData.leaders && Object.keys(detailedData.leaders).length > 0 ? `
+            <div class="stats-section">
+                <div class="stats-title">⭐ Game Leaders</div>
+                <div class="leaders-grid">
+                    ${generateLeadersDisplay(detailedData.leaders)}
+                </div>
+            </div>
+        ` : `
+            <div class="stats-section">
+                <div class="stats-title">⭐ Game Leaders</div>
+                <p>No game leaders data available</p>
+            </div>
+        `}
+
+        ${detailedData.scoring_summary && detailedData.scoring_summary.length > 0 ? `
+            <div class="stats-section">
+                <div class="stats-title">🎯 Scoring Summary</div>
+                <div class="scoring-timeline">
+                    ${generateScoringTimeline(detailedData.scoring_summary)}
                 </div>
             </div>
         ` : ''}
 
         <div class="modal-actions">
-            <button onclick="searchForMoreDetails('${gameData.team}', '${gameData.opponent}', '${sport}', '${gameData.status}')" 
+            <button onclick="searchForMoreDetails('${detailedData.away_team.name}', '${detailedData.home_team.name}', '${sport}', '${detailedData.status?.display}')" 
                     class="action-btn primary-btn">
-                🔍 Search Game Details
+                🔍 Search More Details
             </button>
-            <button onclick="searchForTeamStats('${gameData.team}', '${sport}')" 
+            <button onclick="searchForTeamStats('${detailedData.home_team.name}', '${sport}')" 
                     class="action-btn secondary-btn">
-                📊 Team Stats
+                📊 Team Season Stats
+            </button>
+            <button onclick="shareGameResult('${detailedData.away_team.name}', '${detailedData.home_team.name}', '${detailedData.away_team.score}', '${detailedData.home_team.score}')" 
+                    class="action-btn share-btn">
+                📤 Share Result
             </button>
         </div>
 
         <div class="modal-footer">
-            <div class="last-updated-modal">Last updated: ${gameData.last_updated}</div>
+            <div class="data-source">Data from ESPN • Real-time updates</div>
+        </div>
+    `;
+}
+
+function generateTeamStatsComparison(boxScore) {
+    if (!boxScore || boxScore.length < 2) return '<p>No team statistics available</p>';
+    
+    const team1 = boxScore[0];
+    const team2 = boxScore[1];
+    
+    // Clean up and organize statistics
+    const team1Stats = cleanAndFilterStats(team1.statistics);
+    const team2Stats = cleanAndFilterStats(team2.statistics);
+    
+    if (team1Stats.length === 0 && team2Stats.length === 0) {
+        return '<p>No detailed statistics available</p>';
+    }
+    
+    // Create maps for easier lookup
+    const team1StatMap = new Map();
+    const team2StatMap = new Map();
+    
+    team1Stats.forEach(stat => {
+        team1StatMap.set(stat.name, stat.value);
+    });
+    
+    team2Stats.forEach(stat => {
+        team2StatMap.set(stat.name, stat.value);
+    });
+    
+    // Find common stats between both teams for comparison
+    const commonStatNames = team1Stats
+        .map(s => s.name)
+        .filter(name => team2StatMap.has(name))
+        .slice(0, 12);
+    
+    if (commonStatNames.length === 0) {
+        return `
+            <div class="team-stats-container">
+                <div class="team-stats-header">
+                    <h4>📊 Individual Team Statistics</h4>
+                </div>
+                
+                <div class="individual-stats-grid">
+                    <div class="team-stats-column">
+                        <h5>${team1.team_name}</h5>
+                        ${team1Stats.slice(0, 8).map(stat => `
+                            <div class="stat-row">
+                                <span class="stat-name">${stat.name}</span>
+                                <span class="stat-value">${stat.value}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                    
+                    <div class="team-stats-column">
+                        <h5>${team2.team_name}</h5>
+                        ${team2Stats.slice(0, 8).map(stat => `
+                            <div class="stat-row">
+                                <span class="stat-name">${stat.name}</span>
+                                <span class="stat-value">${stat.value}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    return `
+        <div class="team-stats-container">
+            <div class="team-stats-header">
+                <h4>📊 Team Statistics Comparison</h4>
+            </div>
+            
+            <div class="stats-comparison-grid">
+                <div class="stats-grid-header">
+                    <div class="team-name-header">${team1.team_name}</div>
+                    <div class="stat-name-header">Statistic</div>
+                    <div class="team-name-header">${team2.team_name}</div>
+                </div>
+                
+                ${commonStatNames.map(statName => `
+                    <div class="stat-comparison-row">
+                        <div class="stat-value-left">${team1StatMap.get(statName) || '0'}</div>
+                        <div class="stat-name-center">${statName}</div>
+                        <div class="stat-value-right">${team2StatMap.get(statName) || '0'}</div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `;
+}
+
+function cleanAndFilterStats(statistics) {
+    if (!statistics || !Array.isArray(statistics)) return [];
+    
+    return statistics
+        .map(stat => ({
+            name: cleanStatName(stat.display_name || stat.name),
+            value: stat.value || '0'
+        }))
+        .filter(stat => stat.name && isImportantStat(stat.name))
+        .slice(0, 15);
+}
+
+function cleanStatName(name) {
+    if (!name) return '';
+    
+    const cleanMap = {
+        'fieldGoalsMade-fieldGoalsAttempted': 'Field Goals',
+        'threePointFieldGoalsMade-threePointFieldGoalsAttempted': '3-Point Shots',
+        'freeThrowsMade-freeThrowsAttempted': 'Free Throws',
+        'fieldGoalPct': 'Field Goal %',
+        'threePointFieldGoalPct': '3-Point %', 
+        'freeThrowPct': 'Free Throw %',
+        'totalRebounds': 'Total Rebounds',
+        'offensiveRebounds': 'Offensive Rebounds',
+        'defensiveRebounds': 'Defensive Rebounds',
+        'assists': 'Assists',
+        'steals': 'Steals',
+        'blocks': 'Blocks',
+        'turnovers': 'Turnovers',
+        'personalFouls': 'Personal Fouls',
+        'points': 'Points'
+    };
+    
+    if (cleanMap[name]) {
+        return cleanMap[name];
+    }
+    
+    return name
+        .replace(/([A-Z])/g, ' $1')
+        .replace(/^./, str => str.toUpperCase())
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function isImportantStat(statName) {
+    const importantStats = [
+        'Field Goals', 'Field Goal %', '3-Point Shots', '3-Point %', 
+        'Free Throws', 'Free Throw %', 'Total Rebounds', 'Assists', 
+        'Steals', 'Blocks', 'Turnovers', 'Points', 'Personal Fouls'
+    ];
+    
+    return importantStats.some(important => 
+        statName.toLowerCase().includes(important.toLowerCase())
+    );
+}
+
+function generateScoringTimeline(scoringSummary) {
+    return scoringSummary.slice(0, 10).map(play => `
+        <div class="scoring-play">
+            <div class="play-time">${play.period} ${play.clock}</div>
+            <div class="play-team">${play.team}</div>
+            <div class="play-description">${play.description}</div>
+            <div class="play-points">+${play.score_value}</div>
+        </div>
+    `).join('');
+}
+
+function displayBasicGameData(gameData, sport, widgetIndex, container) {
+    const isUpcoming = gameData.status_type === 'STATUS_SCHEDULED' && gameData.team_score === '-';
+    const isLive = gameData.status_type === 'STATUS_IN_PROGRESS' || gameData.status_type === 'STATUS_HALFTIME';
+    
+    container.innerHTML = `
+        <div class="basic-game-display">
+            <div class="basic-matchup">
+                <div class="basic-team">
+                    <span class="team-name">${gameData.team}</span>
+                    <span class="team-score">${gameData.team_score}</span>
+                </div>
+                <div class="basic-vs">vs</div>
+                <div class="basic-team">
+                    <span class="team-name">${gameData.opponent}</span>
+                    <span class="team-score">${gameData.opponent_score}</span>
+                </div>
+            </div>
+            
+            <div class="basic-status ${isLive ? 'live' : ''}">${gameData.status}</div>
+            
+            ${gameData.venue && gameData.venue !== 'TBD' ? `
+                <div class="basic-venue">📍 ${gameData.venue}</div>
+            ` : ''}
+            
+            ${gameData.next_game ? `
+                <div class="basic-next-game">
+                    <strong>Next:</strong> vs ${gameData.next_game.opponent} • ${formatGameDate(gameData.next_game.game_date)}
+                </div>
+            ` : ''}
+        </div>
+        
+        <div class="basic-actions">
+            <button onclick="searchForMoreDetails('${gameData.team}', '${gameData.opponent}', '${sport}', '${gameData.status}')" 
+                    class="action-btn primary-btn">
+                🔍 Search Game Details
+            </button>
         </div>
     `;
 }
@@ -718,44 +1079,23 @@ function searchForTeamStats(team, sport) {
     window.open(`https://www.google.com/search?q=${encodedQuery}`, '_blank');
 }
 
-// Make widgets clickable to open modal
-function makeWidgetsClickable() {
-    for (let i = 0; i < 4; i++) {
-        const widget = document.getElementById(`widget-${i}`);
-        const scoreDisplay = widget.querySelector('.score-display');
-        
-        scoreDisplay.addEventListener('click', function(e) {
-            // Don't trigger if clicking on action buttons
-            if (e.target.closest('.widget-actions')) {
-                return;
-            }
-            
-            // Only open details if there's valid game data
-            const gameData = widgetGameData[i];
-            if (gameData && gameData.opponent !== 'No games found' && gameData.opponent !== 'Error loading data') {
-                openGameModal(i);
-            }
+function shareGameResult(awayTeam, homeTeam, awayScore, homeScore) {
+    const shareText = `${awayTeam} ${awayScore} - ${homeScore} ${homeTeam}`;
+    
+    if (navigator.share) {
+        navigator.share({
+            title: 'Game Result',
+            text: shareText,
+            url: window.location.href
         });
-        
-        // Add hover effect to show it's clickable
-        scoreDisplay.addEventListener('mouseenter', function() {
-            if (widgetGameData[i] && widgetGameData[i].opponent !== 'No games found') {
-                this.style.cursor = 'pointer';
-                this.style.transform = 'scale(1.02)';
-                this.style.transition = 'transform 0.2s ease';
-            }
-        });
-        
-        scoreDisplay.addEventListener('mouseleave', function() {
-            this.style.cursor = 'default';
-            this.style.transform = 'scale(1)';
+    } else {
+        navigator.clipboard.writeText(shareText).then(() => {
+            const btn = event.target;
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '✅ Copied!';
+            setTimeout(() => {
+                btn.innerHTML = originalText;
+            }, 2000);
         });
     }
 }
-
-// Update your existing DOMContentLoaded event
-document.addEventListener('DOMContentLoaded', function() {
-    loadUserConfig();
-    addTeamSearch();
-    makeWidgetsClickable(); // Add this line
-});
