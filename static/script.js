@@ -500,3 +500,262 @@ function addTeamSearch() {
 document.addEventListener('DOMContentLoaded', function() {
     addTeamSearch();
 });
+
+// Enhanced game details with modal functionality
+function openGameDetails(widgetIndex) {
+    const gameData = widgetGameData[widgetIndex];
+    
+    if (!gameData || gameData.opponent === 'No games found') {
+        return;
+    }
+
+    // Open the modal instead of Google search
+    openGameModal(widgetIndex);
+}
+
+// Game modal functionality
+let gameModal = null;
+
+function createGameModal() {
+    if (gameModal) return; // Already created
+    
+    // Create modal HTML
+    const modalHTML = `
+        <div id="gameModal" class="game-modal">
+            <div class="game-modal-content">
+                <span class="game-modal-close">&times;</span>
+                <div id="gameModalContent">
+                    <div class="loading-spinner">
+                        <div class="spinner-icon">🏀</div>
+                        <p>Loading game details...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Add to document
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+    
+    gameModal = document.getElementById('gameModal');
+    const closeBtn = document.querySelector('.game-modal-close');
+    
+    // Event listeners
+    closeBtn.onclick = closeGameModal;
+    
+    gameModal.onclick = function(event) {
+        if (event.target === gameModal) {
+            closeGameModal();
+        }
+    };
+    
+    // ESC key to close
+    document.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape' && gameModal && gameModal.style.display === 'block') {
+            closeGameModal();
+        }
+    });
+}
+
+function openGameModal(widgetIndex) {
+    createGameModal();
+    gameModal.style.display = 'block';
+    loadGameDetails(widgetIndex);
+}
+
+function closeGameModal() {
+    if (gameModal) {
+        gameModal.style.display = 'none';
+    }
+}
+
+async function loadGameDetails(widgetIndex) {
+    const gameData = widgetGameData[widgetIndex];
+    const sport = userConfig[`widget_${widgetIndex}`]?.sport;
+    const modalContent = document.getElementById('gameModalContent');
+    
+    try {
+        // Show loading state
+        modalContent.innerHTML = `
+            <div class="loading-spinner">
+                <div class="spinner-icon">${getSportEmoji(sport)}</div>
+                <p>Loading game details...</p>
+            </div>
+        `;
+
+        // For now, we'll use the existing game data and enhance it
+        // Later you could add a separate API endpoint for detailed stats
+        
+        await new Promise(resolve => setTimeout(resolve, 800)); // Simulate loading
+        
+        displayGameDetails(gameData, sport, widgetIndex);
+
+    } catch (error) {
+        modalContent.innerHTML = `
+            <div class="error-message">
+                <h3>Error Loading Game Details</h3>
+                <p>Unable to fetch game information. Please try again later.</p>
+            </div>
+        `;
+    }
+}
+
+function getSportEmoji(sport) {
+    const emojis = {
+        'nba': '🏀',
+        'wnba': '🏀',
+        'nfl': '🏈',
+        'mlb': '⚾',
+        'nhl': '🏒',
+        'mls': '⚽',
+        'premier league': '⚽',
+        'la liga': '⚽'
+    };
+    return emojis[sport?.toLowerCase()] || '🏀';
+}
+
+function displayGameDetails(gameData, sport, widgetIndex) {
+    const modalContent = document.getElementById('gameModalContent');
+    const isUpcoming = gameData.status_type === 'STATUS_SCHEDULED' && gameData.team_score === '-';
+    const isLive = gameData.status_type === 'STATUS_IN_PROGRESS' || gameData.status_type === 'STATUS_HALFTIME';
+    
+    // Format date for display
+    let gameDateTime = 'Unknown';
+    if (gameData.game_date_iso) {
+        try {
+            const date = new Date(gameData.game_date_iso);
+            gameDateTime = date.toLocaleDateString('en-US', { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true
+            });
+        } catch (e) {
+            gameDateTime = 'Date unavailable';
+        }
+    }
+    
+    modalContent.innerHTML = `
+        <div class="game-header">
+            <div class="game-matchup">${gameData.team} vs ${gameData.opponent}</div>
+            <div class="game-info">
+                ${gameData.status} | ${gameDateTime}<br>
+                ${gameData.venue && gameData.venue !== 'TBD' ? `📍 ${gameData.venue}` : ''}
+            </div>
+        </div>
+
+        <div class="stats-section">
+            <div class="stats-title">${isUpcoming ? 'Upcoming Game' : isLive ? 'Live Score' : 'Final Score'}</div>
+            ${!isUpcoming ? `
+                <div class="score-display-modal">
+                    <div class="team-score-modal">
+                        <div class="team-name-modal">${gameData.team}</div>
+                        <div class="score-modal">${gameData.team_score}</div>
+                    </div>
+                    <div class="vs-modal">vs</div>
+                    <div class="team-score-modal">
+                        <div class="team-name-modal">${gameData.opponent}</div>
+                        <div class="score-modal">${gameData.opponent_score}</div>
+                    </div>
+                </div>
+            ` : `
+                <div class="upcoming-game-display">
+                    <div class="upcoming-teams">${gameData.team} vs ${gameData.opponent}</div>
+                    <div class="game-time">${formatGameDate(gameData.game_date_iso)}</div>
+                </div>
+            `}
+        </div>
+
+        ${gameData.next_game ? `
+            <div class="stats-section">
+                <div class="stats-title">Next Game</div>
+                <div class="next-game-modal">
+                    <div class="next-opponent">vs ${gameData.next_game.opponent}</div>
+                    <div class="next-date">${formatGameDate(gameData.next_game.game_date)}</div>
+                    ${gameData.next_game.venue ? `<div class="next-venue">📍 ${gameData.next_game.venue}</div>` : ''}
+                </div>
+            </div>
+        ` : ''}
+
+        <div class="modal-actions">
+            <button onclick="searchForMoreDetails('${gameData.team}', '${gameData.opponent}', '${sport}', '${gameData.status}')" 
+                    class="action-btn primary-btn">
+                🔍 Search Game Details
+            </button>
+            <button onclick="searchForTeamStats('${gameData.team}', '${sport}')" 
+                    class="action-btn secondary-btn">
+                📊 Team Stats
+            </button>
+        </div>
+
+        <div class="modal-footer">
+            <div class="last-updated-modal">Last updated: ${gameData.last_updated}</div>
+        </div>
+    `;
+}
+
+function searchForMoreDetails(team, opponent, sport, status) {
+    let searchQuery = '';
+    
+    if (status.toLowerCase().includes('final')) {
+        searchQuery = `${team} vs ${opponent} box score ${sport}`;
+    } else if (status.toLowerCase().includes('progress') || status.toLowerCase().includes('live')) {
+        searchQuery = `${team} vs ${opponent} live score ${sport}`;
+    } else {
+        searchQuery = `${team} vs ${opponent} game preview ${sport}`;
+    }
+    
+    const encodedQuery = encodeURIComponent(searchQuery);
+    window.open(`https://www.google.com/search?q=${encodedQuery}`, '_blank');
+}
+
+function searchForTeamStats(team, sport) {
+    const searchQuery = `${team} ${sport} stats standings`;
+    const encodedQuery = encodeURIComponent(searchQuery);
+    window.open(`https://www.google.com/search?q=${encodedQuery}`, '_blank');
+}
+
+// Make widgets clickable to open modal
+function makeWidgetsClickable() {
+    for (let i = 0; i < 4; i++) {
+        const widget = document.getElementById(`widget-${i}`);
+        const scoreDisplay = widget.querySelector('.score-display');
+        
+        scoreDisplay.addEventListener('click', function(e) {
+            // Don't trigger if clicking on action buttons
+            if (e.target.closest('.widget-actions')) {
+                return;
+            }
+            
+            // Only open details if there's valid game data
+            const gameData = widgetGameData[i];
+            if (gameData && gameData.opponent !== 'No games found' && gameData.opponent !== 'Error loading data') {
+                openGameModal(i);
+            }
+        });
+        
+        // Add hover effect to show it's clickable
+        scoreDisplay.addEventListener('mouseenter', function() {
+            if (widgetGameData[i] && widgetGameData[i].opponent !== 'No games found') {
+                this.style.cursor = 'pointer';
+                this.style.transform = 'scale(1.02)';
+                this.style.transition = 'transform 0.2s ease';
+            }
+        });
+        
+        scoreDisplay.addEventListener('mouseleave', function() {
+            this.style.cursor = 'default';
+            this.style.transform = 'scale(1)';
+        });
+    }
+}
+
+// Update your existing DOMContentLoaded event
+document.addEventListener('DOMContentLoaded', function() {
+    loadUserConfig();
+    addTeamSearch();
+    makeWidgetsClickable(); // Add this line
+});
