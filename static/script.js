@@ -7,6 +7,27 @@ let widgetGameData = {};
 // Game modal functionality
 let gameModal = null;
 
+// Security: XSS Protection Functions
+function escapeHtml(unsafe) {
+    if (typeof unsafe !== 'string') {
+        return unsafe;
+    }
+    return unsafe
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+function sanitizeText(text) {
+    // Remove any script tags or dangerous content
+    if (typeof text !== 'string') {
+        return text;
+    }
+    return text.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+}
+
 // Initialize the dashboard when page loads
 document.addEventListener('DOMContentLoaded', function() {
     loadUserConfig();
@@ -265,9 +286,10 @@ function updateScoreDisplay(widgetIndex, data) {
     
     if (isUpcoming) {
         // For upcoming games, show minimal display
-        document.getElementById(`team-name-${widgetIndex}`).textContent = data.team;
+        // Security: Use textContent (not innerHTML) to prevent XSS
+        document.getElementById(`team-name-${widgetIndex}`).textContent = sanitizeText(data.team);
         document.getElementById(`team-score-${widgetIndex}`).style.display = 'none';
-        document.getElementById(`opponent-name-${widgetIndex}`).textContent = data.opponent;
+        document.getElementById(`opponent-name-${widgetIndex}`).textContent = sanitizeText(data.opponent);
         document.getElementById(`opponent-score-${widgetIndex}`).style.display = 'none';
         
         // Show game time instead of scores
@@ -279,11 +301,12 @@ function updateScoreDisplay(widgetIndex, data) {
         vsElement.style.fontWeight = '600';
     } else {
         // For completed/in-progress games, show scores normally
-        document.getElementById(`team-name-${widgetIndex}`).textContent = data.team;
-        document.getElementById(`team-score-${widgetIndex}`).textContent = data.team_score;
+        // Security: Use textContent (not innerHTML) to prevent XSS
+        document.getElementById(`team-name-${widgetIndex}`).textContent = sanitizeText(data.team);
+        document.getElementById(`team-score-${widgetIndex}`).textContent = sanitizeText(data.team_score);
         document.getElementById(`team-score-${widgetIndex}`).style.display = 'block';
-        document.getElementById(`opponent-name-${widgetIndex}`).textContent = data.opponent;
-        document.getElementById(`opponent-score-${widgetIndex}`).textContent = data.opponent_score;
+        document.getElementById(`opponent-name-${widgetIndex}`).textContent = sanitizeText(data.opponent);
+        document.getElementById(`opponent-score-${widgetIndex}`).textContent = sanitizeText(data.opponent_score);
         document.getElementById(`opponent-score-${widgetIndex}`).style.display = 'block';
         
         // Reset VS styling
@@ -302,20 +325,22 @@ function updateScoreDisplay(widgetIndex, data) {
     // Add venue information if available
     const venueElement = document.getElementById(`venue-${widgetIndex}`);
     if (data.venue && data.venue !== 'TBD' && data.venue !== 'N/A' && data.venue !== '-') {
-        venueElement.textContent = `📍 ${data.venue}`;
+        // Security: Use textContent to prevent XSS
+        venueElement.textContent = `📍 ${sanitizeText(data.venue)}`;
         venueElement.style.display = 'block';
     } else {
         venueElement.style.display = 'none';
     }
-    
+
     // Display next game information (only if primary game is completed/in-progress)
     const nextGameElement = document.getElementById(`next-game-${widgetIndex}`);
     if (data.next_game && nextGameElement && !isUpcoming) {
         const nextGame = data.next_game;
         const formattedDate = formatGameDate(nextGame.game_date);
+        // Security: Escape HTML before using innerHTML
         nextGameElement.innerHTML = `
             <div class="next-game-label">Next:</div>
-            <div class="next-game-details">vs ${nextGame.opponent} • ${formattedDate}</div>
+            <div class="next-game-details">vs ${escapeHtml(sanitizeText(nextGame.opponent))} • ${escapeHtml(formattedDate)}</div>
         `;
         nextGameElement.style.display = 'block';
     } else if (nextGameElement) {

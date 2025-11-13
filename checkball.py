@@ -4,6 +4,11 @@ import json
 from datetime import datetime, timedelta
 import pytz
 import logging
+import re
+from functools import wraps
+from cachetools import TTLCache
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 # Configure logging
 logging.basicConfig(
@@ -15,10 +20,112 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.static_folder = 'static'
 
+# Security: Secret key for session management (use environment variable in production)
+import os
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', os.urandom(32))
+
+# Rate limiting to prevent DDoS attacks
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri="memory://",
+    strategy="fixed-window"
+)
+
+# Cache for API responses to reduce external requests
+api_cache = TTLCache(maxsize=1000, ttl=300)  # 5 minute TTL
+
+# Security: Input validation patterns
+VALID_SPORT_PATTERN = re.compile(r'^[a-zA-Z\s]+$')
+VALID_TEAM_PATTERN = re.compile(r'^[a-zA-Z0-9\s\'\.\-&]+$')
+
+# Security headers middleware
+@app.after_request
+def add_security_headers(response):
+    """Add security headers to all responses"""
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    response.headers['Content-Security-Policy'] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' https://a.espncdn.com data:; "
+        "connect-src 'self'; "
+        "frame-ancestors 'none';"
+    )
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
+    return response
+
+def sanitize_input(value, pattern, max_length=100):
+    """Sanitize and validate input strings"""
+    if not value:
+        return None
+
+    # Remove leading/trailing whitespace
+    value = value.strip()
+
+    # Check length
+    if len(value) > max_length:
+        logger.warning(f"Input too long: {len(value)} characters")
+        return None
+
+    # Check pattern
+    if not pattern.match(value):
+        logger.warning(f"Input failed pattern validation: {value}")
+        return None
+
+    return value
+
+def get_cache_key(prefix, *args):
+    """Generate cache key from prefix and arguments"""
+    return f"{prefix}:{':'.join(str(arg) for arg in args)}"
+
 class SportsAPI:
     def __init__(self):
         self.base_url = "https://site.api.espn.com/apis/site/v2/sports"
-    
+        self.request_timeout = 5  # Security: Enforce timeout
+        self.max_retries = 2  # Security: Limit retries
+
+    def _make_api_request(self, url, timeout=None):
+        """Make API request with caching and security controls"""
+        cache_key = get_cache_key('api', url)
+
+        # Check cache first
+        if cache_key in api_cache:
+            logger.debug(f"Cache hit for {url}")
+            return api_cache[cache_key]
+
+        # Make request with timeout and retry logic
+        timeout = timeout or self.request_timeout
+        for attempt in range(self.max_retries):
+            try:
+                response = requests.get(
+                    url,
+                    timeout=timeout,
+                    headers={'User-Agent': 'CheckBall/1.0'}  # Identify our requests
+                )
+                response.raise_for_status()
+                data = response.json()
+
+                # Cache successful response
+                api_cache[cache_key] = data
+                return data
+
+            except requests.Timeout:
+                logger.warning(f"Request timeout for {url} (attempt {attempt + 1})")
+                if attempt == self.max_retries - 1:
+                    raise
+            except requests.RequestException as e:
+                logger.error(f"Request error for {url}: {e}")
+                if attempt == self.max_retries - 1:
+                    raise
+
+        return None
+
     def get_scores(self, sport, team_name):
         """Get scores for a specific sport and team with primary and secondary game info"""
         try:
@@ -55,8 +162,7 @@ class SportsAPI:
                 url = f"{base_url}/scoreboard?dates={date_str}"
                 
                 try:
-                    response = requests.get(url, timeout=3)  # Back to 3 seconds
-                    data = response.json()
+                    data = self._make_api_request(url, timeout=3)
                     
                     # Find games involving the specified team
                     for game in data.get('events', []):
@@ -410,11 +516,9 @@ class SportsAPI:
             detailed_url = f"{base_url}/summary?event={game_info['game_id']}"
         
             try:
-                response = requests.get(detailed_url, timeout=5)
-                if response.status_code != 200:
-                    return {'error': f'Failed to fetch detailed data: {response.status_code}'}
-                
-                data = response.json()
+                data = self._make_api_request(detailed_url, timeout=5)
+                if not data:
+                    return {'error': 'Failed to fetch detailed data'}
             
                 # Parse the detailed game data
                 return self._parse_detailed_game_data(data, sport, game_info)
@@ -439,8 +543,7 @@ class SportsAPI:
                 url = f"{base_url}/scoreboard?dates={date_str}"
             
                 try:
-                    response = requests.get(url, timeout=3)
-                    data = response.json()
+                    data = self._make_api_request(url, timeout=3)
                 
                     # Find the team's game
                     for game in data.get('events', []):
@@ -1172,15 +1275,17 @@ def dashboard():
     return render_template('dashboard.html')
 
 @app.route('/api/teams/<path:sport>')
+@limiter.limit("30 per minute")  # Rate limit: 30 requests per minute
 def get_teams(sport):
     """Get teams for a specific sport"""
     # URL decode the sport parameter to handle spaces and special characters
     import urllib.parse
     sport = urllib.parse.unquote(sport)
 
-    # Input validation: ensure sport is a valid string
-    if not sport or len(sport) > 50:
-        logger.warning(f"Invalid sport parameter: '{sport}'")
+    # Security: Sanitize input
+    sport = sanitize_input(sport, VALID_SPORT_PATTERN, max_length=50)
+    if not sport:
+        logger.warning(f"Invalid sport parameter")
         return jsonify({'error': 'Invalid sport parameter'}), 400
 
     logger.debug(f"Getting teams for sport: '{sport}'")
@@ -1189,6 +1294,7 @@ def get_teams(sport):
     return jsonify(teams)
 
 @app.route('/api/scores/<path:sport>/<path:team>')
+@limiter.limit("20 per minute")  # Rate limit: 20 requests per minute
 def get_scores(sport, team):
     """Get scores for a specific team"""
     # URL decode the parameters to handle spaces and special characters
@@ -1196,112 +1302,100 @@ def get_scores(sport, team):
     sport = urllib.parse.unquote(sport)
     team = urllib.parse.unquote(team)
 
-    # Input validation
-    if not sport or len(sport) > 50 or not team or len(team) > 100:
-        logger.warning(f"Invalid parameters: sport='{sport}', team='{team}'")
+    # Security: Sanitize inputs
+    sport = sanitize_input(sport, VALID_SPORT_PATTERN, max_length=50)
+    team = sanitize_input(team, VALID_TEAM_PATTERN, max_length=100)
+
+    if not sport or not team:
+        logger.warning(f"Invalid parameters after sanitization")
         return jsonify({'error': 'Invalid parameters'}), 400
 
     logger.debug(f"Getting scores for {team} in {sport}")
-    scores = sports_api.get_scores(sport, team)
-    return jsonify(scores)
+    try:
+        scores = sports_api.get_scores(sport, team)
+        return jsonify(scores)
+    except Exception as e:
+        logger.error(f"Error getting scores: {e}")
+        return jsonify({'error': 'Service temporarily unavailable'}), 503
 
 @app.route('/api/game-details/<path:sport>/<path:team>')
+@limiter.limit("10 per minute")  # Rate limit: 10 requests per minute (more intensive)
 def get_game_details(sport, team):
     """Get detailed game information for modal display"""
     import urllib.parse
     sport = urllib.parse.unquote(sport)
     team = urllib.parse.unquote(team)
 
-    # Input validation
-    if not sport or len(sport) > 50 or not team or len(team) > 100:
-        logger.warning(f"Invalid parameters: sport='{sport}', team='{team}'")
+    # Security: Sanitize inputs
+    sport = sanitize_input(sport, VALID_SPORT_PATTERN, max_length=50)
+    team = sanitize_input(team, VALID_TEAM_PATTERN, max_length=100)
+
+    if not sport or not team:
+        logger.warning(f"Invalid parameters after sanitization")
         return jsonify({'error': 'Invalid parameters'}), 400
 
     logger.debug(f"Getting detailed game data for {team} in {sport}")
-    detailed_data = sports_api.get_detailed_game_data(sport, team)
-    return jsonify(detailed_data)
-
-# Add this temporary debug endpoint
-@app.route('/debug/game-data/<path:sport>/<path:team>')
-def debug_game_data(sport, team):
-    """Debug endpoint to see raw ESPN API response"""
-    import urllib.parse
-    sport = urllib.parse.unquote(sport)
-    team = urllib.parse.unquote(team)
-    
     try:
-        # Get the game data
-        game_info = sports_api._find_team_game(sport, team, sports_api.base_url + f"/{sport.lower()}")
-        if not game_info or 'error' in game_info:
-            return jsonify({'error': 'No game found'})
-        
-        # Get detailed data
-        if sport.lower() == 'nba':
-            base_url = f"{sports_api.base_url}/basketball/nba"
-        elif sport.lower() == 'wnba':
-            base_url = f"{sports_api.base_url}/basketball/wnba"
-        # Add other sports as needed
-        else:
-            return jsonify({'error': 'Sport not supported for debug'})
-        
-        detailed_url = f"{base_url}/summary?event={game_info['game_id']}"
-        response = requests.get(detailed_url, timeout=5)
-        data = response.json()
-        
-        # Return structure info
-        debug_info = {
-            'main_keys': list(data.keys()),
-            'has_leaders': 'leaders' in data,
-            'has_boxscore': 'boxscore' in data,
-            'leaders_info': None,
-            'boxscore_info': None
-        }
-        
-        if 'leaders' in data:
-            debug_info['leaders_info'] = {
-                'type': str(type(data['leaders'])),
-                'length': len(data['leaders']) if isinstance(data['leaders'], list) else 'N/A',
-                'structure': data['leaders'][:2] if isinstance(data['leaders'], list) and len(data['leaders']) > 0 else data['leaders']
-            }
-        
-        if 'boxscore' in data:
-            boxscore = data['boxscore']
-            debug_info['boxscore_info'] = {
-                'keys': list(boxscore.keys()),
-                'has_players': 'players' in boxscore,
-                'players_count': len(boxscore.get('players', [])) if 'players' in boxscore else 0
-            }
-            
-            if 'players' in boxscore and len(boxscore['players']) > 0:
-                first_team = boxscore['players'][0]
-                debug_info['boxscore_info']['first_team_structure'] = {
-                    'keys': list(first_team.keys()),
-                    'team_name': first_team.get('team', {}).get('displayName', 'Unknown'),
-                    'has_statistics': 'statistics' in first_team,
-                    'statistics_type': str(type(first_team.get('statistics', [])))
-                }
-        
-        return jsonify(debug_info)
-        
+        detailed_data = sports_api.get_detailed_game_data(sport, team)
+        return jsonify(detailed_data)
     except Exception as e:
-        return jsonify({'error': str(e), 'traceback': str(e)})
+        logger.error(f"Error getting detailed data: {e}")
+        return jsonify({'error': 'Service temporarily unavailable'}), 503
 
 @app.route('/save_config', methods=['POST'])
+@limiter.limit("10 per minute")  # Rate limit config saves
 def save_config():
     """Save user's widget configuration"""
-    config = request.json
-    response = make_response(jsonify({'status': 'saved'}))
-    # Store config in cookie for 1 year
-    response.set_cookie('sports_config', json.dumps(config), max_age=365*24*60*60)
-    return response
+    try:
+        config = request.json
+
+        # Security: Validate config structure
+        if not isinstance(config, dict):
+            return jsonify({'error': 'Invalid configuration format'}), 400
+
+        # Security: Limit config size to prevent abuse
+        if len(json.dumps(config)) > 10000:  # 10KB limit
+            return jsonify({'error': 'Configuration too large'}), 400
+
+        response = make_response(jsonify({'status': 'saved'}))
+
+        # Security: Secure cookie settings
+        response.set_cookie(
+            'sports_config',
+            json.dumps(config),
+            max_age=365*24*60*60,  # 1 year
+            httponly=True,  # Prevent JavaScript access
+            secure=True,    # HTTPS only (use False for local development)
+            samesite='Lax'  # CSRF protection
+        )
+        return response
+    except Exception as e:
+        logger.error(f"Error saving config: {e}")
+        return jsonify({'error': 'Failed to save configuration'}), 500
 
 @app.route('/load_config')
+@limiter.limit("30 per minute")  # Rate limit config loads
 def load_config():
     """Load user's widget configuration"""
-    config = request.cookies.get('sports_config')
-    if config:
-        return jsonify(json.loads(config))
-    return jsonify({})
+    try:
+        config = request.cookies.get('sports_config')
+        if config:
+            # Security: Safely parse JSON
+            parsed_config = json.loads(config)
+
+            # Security: Validate structure
+            if not isinstance(parsed_config, dict):
+                logger.warning("Invalid config structure in cookie")
+                return jsonify({})
+
+            return jsonify(parsed_config)
+        return jsonify({})
+    except json.JSONDecodeError:
+        logger.warning("Failed to parse config cookie")
+        return jsonify({})
+    except Exception as e:
+        logger.error(f"Error loading config: {e}")
+        return jsonify({})
 
 if __name__ == '__main__':
     import os
