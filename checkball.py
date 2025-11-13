@@ -3,6 +3,14 @@ import requests
 import json
 from datetime import datetime, timedelta
 import pytz
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.static_folder = 'static'
@@ -76,14 +84,14 @@ class SportsAPI:
                                         game_date_eastern = game_date.astimezone(eastern)
                                         
                                         # Debug logging
-                                        print(f"Original date: {game_date_str}")
-                                        print(f"Parsed UTC: {game_date}")
-                                        print(f"Eastern Time: {game_date_eastern}")
-                                        print(f"Current Eastern: {now}")
+                                        logger.debug(f"Original date: {game_date_str}")
+                                        logger.debug(f"Parsed UTC: {game_date}")
+                                        logger.debug(f"Eastern Time: {game_date_eastern}")
+                                        logger.debug(f"Current Eastern: {now}")
                                     else:
                                         continue
                                 except Exception as e:
-                                    print(f"Date parsing error: {e}")
+                                    logger.warning(f"Date parsing error: {e}")
                                     continue
                                 
                                 # Get status information
@@ -116,7 +124,8 @@ class SportsAPI:
                                 }
                                 team_games.append(game_info)
                                 break
-                except:
+                except (requests.RequestException, ValueError, KeyError) as e:
+                    logger.warning(f"Error fetching game data for date {date_str}: {e}")
                     continue
             
             if not team_games:
@@ -199,46 +208,7 @@ class SportsAPI:
             primary_game = games[0]
         
         return primary_game, next_game
-    
-    def _select_game_by_priority(self, games, current_time):
-        """Select game based on priority: today's game, upcoming within 24h, most recent"""
-        today_start = current_time.replace(hour=0, minute=0, second=0, microsecond=0)
-        today_end = today_start + timedelta(days=1)
-        next_24h = current_time + timedelta(hours=24)
-        
-        # Priority 1: Today's games (completed or in progress)
-        todays_games = [g for g in games if today_start <= g['game_date'] < today_end]
-        if todays_games:
-            # Prefer completed games first, then in-progress, then scheduled
-            completed = [g for g in todays_games if g['status_type'] in ['STATUS_FINAL', 'STATUS_FINAL_OT']]
-            in_progress = [g for g in todays_games if g['status_type'] in ['STATUS_IN_PROGRESS', 'STATUS_HALFTIME']]
-            scheduled_today = [g for g in todays_games if g['status_type'] == 'STATUS_SCHEDULED']
-            
-            if completed:
-                return completed[0]  # Most recent completed game today
-            elif in_progress:
-                return in_progress[0]  # Current game in progress
-            elif scheduled_today:
-                return scheduled_today[0]  # Game scheduled for today
-        
-        # Priority 2: Upcoming games within next 24 hours
-        upcoming_games = [g for g in games if current_time <= g['game_date'] <= next_24h]
-        if upcoming_games:
-            # Sort by date, closest first
-            upcoming_games.sort(key=lambda x: x['game_date'])
-            return upcoming_games[0]
-        
-        # Priority 3: Most recent completed game
-        past_games = [g for g in games if g['game_date'] < current_time and g['status_type'] in ['STATUS_FINAL', 'STATUS_FINAL_OT']]
-        if past_games:
-            # Sort by date, most recent first
-            past_games.sort(key=lambda x: x['game_date'], reverse=True)
-            return past_games[0]
-        
-        # Fallback: return the first game found
-        games.sort(key=lambda x: x['game_date'], reverse=True)
-        return games[0]
-    
+
     def _normalize_team_name(self, team_name):
         """Normalize team names for better matching"""
         # Common team name variations and their standard forms
@@ -320,7 +290,9 @@ class SportsAPI:
         if search_words_filtered and api_words_filtered:
             if search_words_filtered.intersection(api_words_filtered):
                 return True
-        
+
+        return False
+
     def _get_opponent(self, competitors, current_team):
         """Get the opponent team info"""
         for team in competitors:
@@ -483,9 +455,10 @@ class SportsAPI:
                                     'team_data': team,
                                     'competitors': competitors
                                 }
-                except:
+                except (requests.RequestException, ValueError, KeyError) as e:
+                    logger.warning(f"Error finding game for {team_name} on {date_str}: {e}")
                     continue
-                
+
             return {'error': 'No recent games found'}
         
         except Exception as e:
@@ -614,80 +587,78 @@ class SportsAPI:
     # Also update the main _parse_game_leaders method to ensure MLB gets priority
     def _parse_game_leaders(self, data, sport):
         """Parse game leaders with enhanced debugging and multiple fallback strategies"""
-        print(f"=== PARSING GAME LEADERS FOR SPORT: {sport} ===")
+        logger.debug(f"=== PARSING GAME LEADERS FOR SPORT: {sport} ===")
         try:
             leaders = {}
-            
-            print(f"Raw data keys: {list(data.keys())}")
+
+            logger.debug(f"Raw data keys: {list(data.keys())}")
             
             # For MLB, try boxscore strategy FIRST and ONLY
             if sport.lower() == 'mlb':
-                print("MLB detected - trying boxscore strategy only")
+                logger.debug("MLB detected - trying boxscore strategy only")
                 if 'boxscore' in data and 'players' in data['boxscore']:
-                    print("Found boxscore with players data")
+                    logger.debug("Found boxscore with players data")
                     leaders = self._extract_leaders_from_boxscore(data['boxscore'], sport)
                     if leaders:
-                        print(f"SUCCESS: Found {len(leaders)} MLB categories from boxscore")
+                        logger.info(f"SUCCESS: Found {len(leaders)} MLB categories from boxscore")
                         return leaders
                     else:
-                        print("Boxscore extraction returned empty for MLB")
+                        logger.debug("Boxscore extraction returned empty for MLB")
                 else:
-                    print("No boxscore/players data found for MLB")
-                
+                    logger.debug("No boxscore/players data found for MLB")
+
                 # If no boxscore data, return empty rather than falling back to basketball stats
-                print("No MLB leaders found - returning empty rather than basketball fallback")
+                logger.debug("No MLB leaders found - returning empty rather than basketball fallback")
                 return {}
             
             # For other sports, use the original strategy fallback system
             # Strategy 1: Parse from main leaders array
             if 'leaders' in data and isinstance(data['leaders'], list) and len(data['leaders']) > 0:
-                print(f"Strategy 1: Main leaders array")
+                logger.debug("Strategy 1: Main leaders array")
                 leaders = self._parse_leaders_from_main_array(data['leaders'])
                 if leaders:
-                    print(f"SUCCESS: Found {len(leaders)} categories from main array")
+                    logger.info(f"SUCCESS: Found {len(leaders)} categories from main array")
                     return leaders
-                        
+
             # Strategy 2: Parse from boxscore players
             if 'boxscore' in data and 'players' in data['boxscore']:
-                print(f"Strategy 2: Boxscore players")
+                logger.debug("Strategy 2: Boxscore players")
                 leaders = self._extract_leaders_from_boxscore(data['boxscore'], sport)
                 if leaders:
-                    print(f"SUCCESS: Found {len(leaders)} categories from boxscore")
+                    logger.info(f"SUCCESS: Found {len(leaders)} categories from boxscore")
                     return leaders
-                    
+
             # Strategy 3: Parse from any nested leaders in boxscore
             if 'boxscore' in data:
-                print(f"Strategy 3: Boxscore nested leaders")
+                logger.debug("Strategy 3: Boxscore nested leaders")
                 leaders = self._extract_leaders_from_boxscore_nested(data['boxscore'])
                 if leaders:
-                    print(f"SUCCESS: Found {len(leaders)} categories from nested boxscore")
+                    logger.info(f"SUCCESS: Found {len(leaders)} categories from nested boxscore")
                     return leaders
-            
+
             # Strategy 4: Create basic team scoring from header
             if 'header' in data:
-                print(f"Strategy 4: Header fallback")
+                logger.debug("Strategy 4: Header fallback")
                 leaders = self._extract_leaders_from_header(data['header'])
                 if leaders:
-                    print(f"SUCCESS: Found {len(leaders)} categories from header")
+                    logger.info(f"SUCCESS: Found {len(leaders)} categories from header")
                     return leaders
-            
-            print(f"ALL STRATEGIES FAILED")
+
+            logger.warning("ALL STRATEGIES FAILED for game leaders parsing")
             return {}
-            
+
         except Exception as e:
-            print(f"Error in _parse_game_leaders: {str(e)}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Error in _parse_game_leaders: {str(e)}", exc_info=True)
             return {}
     def _parse_leaders_from_main_array(self, leaders_data):
         """Parse leaders from the main ESPN leaders array"""
         try:
             leaders = {}
-            print(f"Processing {len(leaders_data)} team entries")
+            logger.debug(f"Processing {len(leaders_data)} team entries")
             
             for team_index, team_data in enumerate(leaders_data):
                 if not isinstance(team_data, dict):
-                    print(f"  Team {team_index}: Not a dict, skipping")
+                    logger.debug(f"  Team {team_index}: Not a dict, skipping")
                     continue
                 
                 # Get team info
@@ -699,12 +670,12 @@ class SportsAPI:
                     f'Team {team_index + 1}'
                 )
                 
-                print(f"  Team {team_index}: {team_name}")
-                print(f"    Team data keys: {list(team_data.keys())}")
+                logger.debug(f"  Team {team_index}: {team_name}")
+                logger.debug(f"    Team data keys: {list(team_data.keys())}")
                 
                 # Get the leaders for this team
                 team_leaders = team_data.get('leaders', [])
-                print(f"    Found {len(team_leaders)} stat categories")
+                logger.debug(f"    Found {len(team_leaders)} stat categories")
                 
                 # Process each stat category for this team
                 for stat_index, stat_category in enumerate(team_leaders):
@@ -718,8 +689,8 @@ class SportsAPI:
                         f'Category {stat_index}'
                     )
                     
-                    print(f"      Category {stat_index}: {category_name}")
-                    print(f"        Category keys: {list(stat_category.keys())}")
+                    logger.debug(f"      Category {stat_index}: {category_name}")
+                    logger.debug(f"        Category keys: {list(stat_category.keys())}")
                     
                     # Initialize category if not exists
                     if category_name not in leaders:
@@ -727,13 +698,13 @@ class SportsAPI:
                     
                     # Get the actual player leaders for this category
                     category_leaders = stat_category.get('leaders', [])
-                    print(f"        Found {len(category_leaders)} players")
+                    logger.debug(f"        Found {len(category_leaders)} players")
                     
                     for player_index, player_data in enumerate(category_leaders):
                         if not isinstance(player_data, dict):
                             continue
                         
-                        print(f"          Player {player_index} keys: {list(player_data.keys())}")
+                        logger.debug(f"          Player {player_index} keys: {list(player_data.keys())}")
                         
                         # Extract player info - be more flexible
                         athlete = player_data.get('athlete', {})
@@ -757,7 +728,7 @@ class SportsAPI:
                             '0'
                         )
                         
-                        print(f"          Player: {player_name}, Value: {stat_value}, Team: {team_name}")
+                        logger.debug(f"          Player: {player_name}, Value: {stat_value}, Team: {team_name}")
                         
                         # More lenient validation - accept any non-zero value
                         if (player_name and player_name not in ['Unknown Player', ''] and 
@@ -768,120 +739,118 @@ class SportsAPI:
                                 'value': str(stat_value),
                                 'team': str(team_name)
                             })
-                            print(f"            ✓ Added to {category_name}")
+                            logger.debug(f"            ✓ Added to {category_name}")
                         else:
-                            print(f"            ✗ Skipped - Name: '{player_name}', Value: '{stat_value}'")
+                            logger.debug(f"            ✗ Skipped - Name: '{player_name}', Value: '{stat_value}'")
             
             # Remove empty categories
             leaders = {k: v for k, v in leaders.items() if v}
             
-            print(f"\n  MAIN ARRAY RESULT: {len(leaders)} categories with data")
+            logger.debug(f"\n  MAIN ARRAY RESULT: {len(leaders)} categories with data")
             for category, category_leaders in leaders.items():
-                print(f"    {category}: {len(category_leaders)} leaders")
+                logger.debug(f"    {category}: {len(category_leaders)} leaders")
             
             return leaders
             
         except Exception as e:
-            print(f"Error in _parse_leaders_from_main_array: {str(e)}")
+            logger.error(f"Error in _parse_leaders_from_main_array: {str(e)}")
             return {}
     
     def _extract_leaders_from_boxscore_nested(self, boxscore):
         """Look for leaders data nested within boxscore structure"""
         try:
-            print("Searching for nested leaders in boxscore...")
+            logger.debug("Searching for nested leaders in boxscore...")
             leaders = {}
             
             # Check if there are leaders nested in the boxscore
             if 'leaders' in boxscore:
-                print("Found leaders in boxscore root")
+                logger.debug("Found leaders in boxscore root")
                 return self._parse_leaders_from_main_array(boxscore['leaders'])
             
             # Check in teams data
             teams = boxscore.get('teams', [])
             for team_data in teams:
                 if 'leaders' in team_data:
-                    print("Found leaders in team data")
+                    logger.debug("Found leaders in team data")
                     team_leaders = self._parse_leaders_from_main_array([team_data])
                     leaders.update(team_leaders)
             
             return leaders
             
         except Exception as e:
-            print(f"Error in _extract_leaders_from_boxscore_nested: {str(e)}")
+            logger.error(f"Error in _extract_leaders_from_boxscore_nested: {str(e)}")
             return {}
     
     def _extract_leaders_from_boxscore(self, boxscore, sport):
         """Extract game leaders from boxscore player statistics - sport aware"""
         try:
-            print(f"=== EXTRACTING LEADERS FOR SPORT: {sport} ===")
+            logger.debug(f"=== EXTRACTING LEADERS FOR SPORT: {sport} ===")
             leaders = {}
             
             # Check for players data in boxscore
             players = boxscore.get('players', [])
-            print(f"Found {len(players)} player groups in boxscore")
+            logger.debug(f"Found {len(players)} player groups in boxscore")
             
             if not players:
-                print("No players data found in boxscore")
+                logger.debug("No players data found in boxscore")
                 return {}
             
             # Log the structure of players data for debugging
             if len(players) > 0:
-                print(f"First team structure: {list(players[0].keys())}")
+                logger.debug(f"First team structure: {list(players[0].keys())}")
                 if 'statistics' in players[0]:
                     stats = players[0].get('statistics', [])
-                    print(f"Statistics structure: {len(stats)} groups")
+                    logger.debug(f"Statistics structure: {len(stats)} groups")
                     for i, stat_group in enumerate(stats):
                         group_name = stat_group.get('name', f'Group {i}')
-                        print(f"  Group {i}: '{group_name}' with {len(stat_group.get('athletes', []))} athletes")
+                        logger.debug(f"  Group {i}: '{group_name}' with {len(stat_group.get('athletes', []))} athletes")
             
             # Sport-specific stat processing with enhanced debugging
-            print(f"Processing sport: '{sport.lower()}'")
+            logger.debug(f"Processing sport: '{sport.lower()}'")
             
             if sport.lower() == 'mlb':
-                print(">>> Calling _extract_mlb_leaders")
+                logger.debug(">>> Calling _extract_mlb_leaders")
                 result = self._extract_mlb_leaders(players)
-                print(f">>> MLB leaders result: {list(result.keys()) if result else 'EMPTY'}")
+                logger.debug(f">>> MLB leaders result: {list(result.keys()) if result else 'EMPTY'}")
                 return result
             elif sport.lower() in ['nba', 'wnba']:
-                print(">>> Calling _extract_basketball_leaders")
+                logger.debug(">>> Calling _extract_basketball_leaders")
                 return self._extract_basketball_leaders(players)
             elif sport.lower() == 'nfl':
-                print(">>> Calling _extract_football_leaders")
+                logger.debug(">>> Calling _extract_football_leaders")
                 return self._extract_football_leaders(players)
             elif sport.lower() in ['mls', 'premier league', 'la liga']:
-                print(">>> Calling _extract_soccer_leaders")
+                logger.debug(">>> Calling _extract_soccer_leaders")
                 return self._extract_soccer_leaders(players)
             elif sport.lower() == 'nhl':
-                print(">>> Calling _extract_hockey_leaders")
+                logger.debug(">>> Calling _extract_hockey_leaders")
                 return self._extract_hockey_leaders(players)
             else:
-                print(">>> Calling _extract_generic_leaders (fallback)")
+                logger.debug(">>> Calling _extract_generic_leaders (fallback)")
                 return self._extract_generic_leaders(players)
                 
         except Exception as e:
-            print(f"Error extracting leaders from boxscore: {str(e)}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Error extracting leaders from boxscore: {str(e)}", exc_info=True)
             return {}
     
     def _extract_mlb_leaders(self, players):
         """Extract MLB-specific game leaders with enhanced debugging"""
         try:
-            print("=== INSIDE _extract_mlb_leaders ===")
+            logger.debug("=== INSIDE _extract_mlb_leaders ===")
             leaders = {}
             all_players = []
             
             # Collect all players with their stats
             for team_index, team_data in enumerate(players):
                 team_name = team_data.get('team', {}).get('abbreviation', 'UNK')
-                print(f"Processing team {team_index}: {team_name}")
+                logger.debug(f"Processing team {team_index}: {team_name}")
                 
                 statistics = team_data.get('statistics', [])
                 if not isinstance(statistics, list):
-                    print(f"  No statistics list found for {team_name}")
+                    logger.debug(f"  No statistics list found for {team_name}")
                     continue
                 
-                print(f"  Found {len(statistics)} stat groups for {team_name}")
+                logger.debug(f"  Found {len(statistics)} stat groups for {team_name}")
                 
                 for group_index, position_group in enumerate(statistics):
                     if not isinstance(position_group, dict):
@@ -890,7 +859,7 @@ class SportsAPI:
                     # Get position group label to understand context
                     group_name = position_group.get('name', f'Group {group_index}')
                     athletes = position_group.get('athletes', [])
-                    print(f"    Group {group_index}: '{group_name}' with {len(athletes)} athletes")
+                    logger.debug(f"    Group {group_index}: '{group_name}' with {len(athletes)} athletes")
                     
                     for athlete_index, athlete in enumerate(athletes):
                         if not isinstance(athlete, dict):
@@ -901,10 +870,10 @@ class SportsAPI:
                         player_name = athlete_info.get('displayName', f'Player {athlete_index}')
                         
                         if not isinstance(stats, list) or len(stats) == 0:
-                            print(f"      {player_name}: No stats")
+                            logger.debug(f"      {player_name}: No stats")
                             continue
                         
-                        print(f"      {player_name}: {len(stats)} stats - {stats[:5]}...")  # Show first 5 stats
+                        logger.debug(f"      {player_name}: {len(stats)} stats - {stats[:5]}...")  # Show first 5 stats
                         
                         player_data = {
                             'name': player_name,
@@ -914,7 +883,7 @@ class SportsAPI:
                         }
                         all_players.append(player_data)
             
-            print(f"Total players collected: {len(all_players)}")
+            logger.debug(f"Total players collected: {len(all_players)}")
             
             # Define MLB stat mappings with more flexible position group matching
             mlb_categories = {
@@ -928,7 +897,7 @@ class SportsAPI:
             
             # If no position-specific stats found, try without position filtering
             if not any(mlb_categories.values()):
-                print("No position-specific stats found, trying without position filtering...")
+                logger.debug("No position-specific stats found, trying without position filtering...")
                 mlb_categories = {
                     'Performance Stat 1': self._find_mlb_stat_leaders(all_players, [], [0, 1, 2]),
                     'Performance Stat 2': self._find_mlb_stat_leaders(all_players, [], [1, 2, 3]),
@@ -939,24 +908,22 @@ class SportsAPI:
             # Filter out empty categories
             leaders = {k: v for k, v in mlb_categories.items() if v}
             
-            print(f"MLB Leaders extracted: {list(leaders.keys())}")
+            logger.debug(f"MLB Leaders extracted: {list(leaders.keys())}")
             for category, category_leaders in leaders.items():
-                print(f"  {category}: {len(category_leaders)} leaders")
+                logger.debug(f"  {category}: {len(category_leaders)} leaders")
                 for leader in category_leaders:
-                    print(f"    {leader['name']} ({leader['team']}): {leader['value']}")
+                    logger.debug(f"    {leader['name']} ({leader['team']}): {leader['value']}")
             
             return leaders
             
         except Exception as e:
-            print(f"Error in _extract_mlb_leaders: {str(e)}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Error in _extract_mlb_leaders: {str(e)}", exc_info=True)
             return {}
 
     def _find_mlb_stat_leaders(self, all_players, position_groups, stat_indices):
         """Find leaders for specific MLB stats based on position groups and indices"""
         try:
-            print(f"    Finding leaders for position groups: {position_groups}, indices: {stat_indices}")
+            logger.debug(f"    Finding leaders for position groups: {position_groups}, indices: {stat_indices}")
             category_leaders = []
             
             for player in all_players:
@@ -986,7 +953,7 @@ class SportsAPI:
                             continue
                 
                 if stat_value:
-                    print(f"      Found: {player['name']} = {stat_value} (index {found_index})")
+                    logger.debug(f"      Found: {player['name']} = {stat_value} (index {found_index})")
                     category_leaders.append({
                         'name': player['name'],
                         'value': str(stat_value),
@@ -1001,14 +968,14 @@ class SportsAPI:
                 for leader in category_leaders:
                     leader.pop('numeric_value', None)
                 result = category_leaders[:3]
-                print(f"    Returning {len(result)} leaders")
+                logger.debug(f"    Returning {len(result)} leaders")
                 return result
             
-            print(f"    No leaders found for this category")
+            logger.debug(f"    No leaders found for this category")
             return []
             
         except Exception as e:
-            print(f"Error in _find_mlb_stat_leaders: {str(e)}")
+            logger.error(f"Error in _find_mlb_stat_leaders: {str(e)}")
             return []
         
     def _extract_basketball_leaders(self, players):
@@ -1132,7 +1099,7 @@ class SportsAPI:
     def _extract_leaders_from_header(self, header):
         """Extract basic game info from header as fallback"""
         try:
-            print("--- Creating basic leaders from header ---")
+            logger.debug("--- Creating basic leaders from header ---")
             leaders = {}
             
             # Get team names and scores as basic "leaders"
@@ -1164,14 +1131,14 @@ class SportsAPI:
                             scoring_leaders.append({'name': 'Team Score', 'value': str(home_score), 'team': home_name})
                         
                         leaders['Team Scoring'] = scoring_leaders
-                        print(f"Created basic team scoring leaders: {home_name} {home_score}, {away_name} {away_score}")
+                        logger.debug(f"Created basic team scoring leaders: {home_name} {home_score}, {away_name} {away_score}")
                     except ValueError:
-                        print("Could not parse team scores as integers")
+                        logger.debug("Could not parse team scores as integers")
             
             return leaders
             
         except Exception as e:
-            print(f"Error extracting leaders from header: {str(e)}")
+            logger.error(f"Error extracting leaders from header: {str(e)}")
             return {}
         
     def _parse_scoring_summary(self, data, sport):
@@ -1210,10 +1177,15 @@ def get_teams(sport):
     # URL decode the sport parameter to handle spaces and special characters
     import urllib.parse
     sport = urllib.parse.unquote(sport)
-    
-    print(f"Getting teams for sport: '{sport}'")  # Debug log
+
+    # Input validation: ensure sport is a valid string
+    if not sport or len(sport) > 50:
+        logger.warning(f"Invalid sport parameter: '{sport}'")
+        return jsonify({'error': 'Invalid sport parameter'}), 400
+
+    logger.debug(f"Getting teams for sport: '{sport}'")
     teams = sports_api.get_teams_by_sport(sport)
-    print(f"Found {len(teams)} teams")  # Debug log
+    logger.debug(f"Found {len(teams)} teams")
     return jsonify(teams)
 
 @app.route('/api/scores/<path:sport>/<path:team>')
@@ -1223,8 +1195,13 @@ def get_scores(sport, team):
     import urllib.parse
     sport = urllib.parse.unquote(sport)
     team = urllib.parse.unquote(team)
-    
-    print(f"Getting scores for {team} in {sport}")  # Debug log
+
+    # Input validation
+    if not sport or len(sport) > 50 or not team or len(team) > 100:
+        logger.warning(f"Invalid parameters: sport='{sport}', team='{team}'")
+        return jsonify({'error': 'Invalid parameters'}), 400
+
+    logger.debug(f"Getting scores for {team} in {sport}")
     scores = sports_api.get_scores(sport, team)
     return jsonify(scores)
 
@@ -1234,8 +1211,13 @@ def get_game_details(sport, team):
     import urllib.parse
     sport = urllib.parse.unquote(sport)
     team = urllib.parse.unquote(team)
-    
-    print(f"Getting detailed game data for {team} in {sport}")
+
+    # Input validation
+    if not sport or len(sport) > 50 or not team or len(team) > 100:
+        logger.warning(f"Invalid parameters: sport='{sport}', team='{team}'")
+        return jsonify({'error': 'Invalid parameters'}), 400
+
+    logger.debug(f"Getting detailed game data for {team} in {sport}")
     detailed_data = sports_api.get_detailed_game_data(sport, team)
     return jsonify(detailed_data)
 
