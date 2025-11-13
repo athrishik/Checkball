@@ -5,11 +5,16 @@
     box-sizing: border-box;
 }
 
+/* Enable smooth scrolling */
+html {
+    scroll-behavior: smooth;
+}
+
 body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', 'Helvetica Neue', Arial, sans-serif;
     background: #0a0a0f;
-    background-image: 
-        /* Sports field lines pattern */
+    background-image:
+        /* Sports field lines pattern - higher resolution */
         linear-gradient(90deg, rgba(139, 69, 255, 0.03) 0px, transparent 1px),
         linear-gradient(180deg, rgba(139, 69, 255, 0.03) 0px, transparent 1px),
         /* Court/field gradient overlays */
@@ -18,7 +23,7 @@ body {
         radial-gradient(ellipse at 50% 50%, rgba(59, 130, 246, 0.04) 0%, transparent 60%),
         /* Base gradient for depth */
         linear-gradient(135deg, #0a0a0f 0%, #0d0d12 50%, #0e0e14 100%);
-    background-size: 
+    background-size:
         80px 80px,
         80px 80px,
         100% 100%,
@@ -32,13 +37,26 @@ body {
         0 0,
         0 0,
         0 0;
+    background-attachment: fixed;
     color: #ffffff;
     min-height: 100vh;
     line-height: 1.6;
+    /* High-quality font rendering */
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "kern" 1;
+    font-kerning: normal;
+    /* Better image rendering */
     image-rendering: -webkit-optimize-contrast;
-    image-rendering: optimize-contrast;
+    image-rendering: crisp-edges;
+    /* GPU acceleration for smooth animations */
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+    -webkit-perspective: 1000px;
+    perspective: 1000px;
     position: relative;
     overflow-x: hidden;
 }
@@ -85,25 +103,42 @@ body::before {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 0.75rem;
-    margin-bottom: 0.5rem;
+    gap: 0.875rem;
+    margin-bottom: 0.75rem;
+    animation: fadeInUp 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .logo-icon {
-    font-size: 2rem;
-    background: linear-gradient(45deg, #8B45FF, #A855F7);
+    font-size: 2.5rem;
+    background: linear-gradient(135deg, #8B45FF 0%, #A855F7 50%, #C77DFF 100%);
     background-clip: text;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 4px 12px rgba(139, 69, 255, 0.4));
+    animation: floatIcon 3s ease-in-out infinite;
+}
+
+@keyframes floatIcon {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-4px); }
 }
 
 .logo h1 {
-    font-size: 2rem;
+    font-size: 2.25rem;
     font-weight: 700;
-    background: linear-gradient(45deg, #8B45FF, #A855F7);
+    background: linear-gradient(135deg, #8B45FF 0%, #A855F7 50%, #C77DFF 100%);
+    background-size: 200% 100%;
     background-clip: text;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
+    letter-spacing: -0.02em;
+    text-shadow: 0 4px 20px rgba(139, 69, 255, 0.3);
+    animation: gradientText 3s ease infinite;
+}
+
+@keyframes gradientText {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
 }
 
 .tagline {
@@ -125,30 +160,65 @@ body::before {
 
 /* Check in button */
 .check-in-button {
-    background: linear-gradient(45deg, #3B82F6, #60A5FA);
+    background: linear-gradient(135deg, #3B82F6 0%, #60A5FA 50%, #3B82F6 100%);
+    background-size: 200% 100%;
     border: none;
     color: white;
-    padding: 0.6rem 1.2rem;
-    border-radius: 20px;
-    font-size: 0.9rem;
+    padding: 0.75rem 1.5rem;
+    border-radius: 24px;
+    font-size: 0.95rem;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
-    box-shadow: 0 2px 10px rgba(59, 130, 246, 0.3);
+    gap: 0.5rem;
+    box-shadow:
+        0 4px 16px rgba(59, 130, 246, 0.3),
+        0 2px 8px rgba(59, 130, 246, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    position: relative;
+    overflow: hidden;
+    will-change: transform, box-shadow;
+    letter-spacing: 0.02em;
+}
+
+.check-in-button::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.6s ease;
 }
 
 .check-in-button:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+    transform: translateY(-2px) scale(1.02);
+    box-shadow:
+        0 8px 24px rgba(59, 130, 246, 0.4),
+        0 4px 12px rgba(59, 130, 246, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    background-position: 100% 0;
+}
+
+.check-in-button:hover::before {
+    left: 100%;
+}
+
+.check-in-button:active {
+    transform: translateY(0) scale(0.98);
+    box-shadow:
+        0 2px 8px rgba(59, 130, 246, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .check-in-button:disabled {
-    opacity: 0.7;
+    opacity: 0.6;
     cursor: not-allowed;
     transform: none;
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2);
 }
 
 .refresh-icon {
@@ -201,16 +271,23 @@ body::before {
 /* Widget styles */
 .widget {
     background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 16px;
-    padding: 1rem;
-    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    min-height: 150px;
+    border-radius: 20px;
+    padding: 1.25rem;
+    transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    min-height: 160px;
     position: relative;
     overflow: hidden;
-    box-shadow: 
-        0 4px 20px rgba(0, 0, 0, 0.25),
+    box-shadow:
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        0 2px 8px rgba(0, 0, 0, 0.2),
         inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    /* GPU acceleration */
+    will-change: transform, box-shadow;
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
 }
 
 .widget::before {
@@ -219,19 +296,27 @@ body::before {
     top: 0;
     left: 0;
     right: 0;
-    height: 2px;
-    background: linear-gradient(90deg, #8B45FF, #A855F7, #8B45FF);
+    height: 3px;
+    background: linear-gradient(90deg, #8B45FF, #A855F7, #C77DFF, #8B45FF);
+    background-size: 200% 100%;
     opacity: 0;
-    transition: opacity 0.3s ease;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    animation: gradientShift 3s ease infinite;
+}
+
+@keyframes gradientShift {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
 }
 
 .widget:hover {
-    transform: translateY(-4px);
-    border-color: rgba(139, 69, 255, 0.3);
-    box-shadow: 
-        0 12px 30px rgba(0, 0, 0, 0.4),
-        0 0 0 1px rgba(139, 69, 255, 0.2),
-        inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    transform: translateY(-6px) scale(1.01);
+    border-color: rgba(139, 69, 255, 0.4);
+    box-shadow:
+        0 16px 48px rgba(0, 0, 0, 0.5),
+        0 8px 16px rgba(139, 69, 255, 0.2),
+        0 0 0 1px rgba(139, 69, 255, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .widget:hover::before {
@@ -316,34 +401,46 @@ body::before {
 .config-mode select {
     width: 100%;
     background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    border: 1.5px solid rgba(255, 255, 255, 0.15);
     color: #fff;
-    padding: 0.75rem;
-    border-radius: 12px;
-    font-size: 0.9rem;
+    padding: 0.875rem 1rem;
+    border-radius: 14px;
+    font-size: 0.95rem;
     font-weight: 500;
-    margin-bottom: 0.75rem;
+    margin-bottom: 0.875rem;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     appearance: none;
-    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
-    background-position: right 0.75rem center;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23a855f7' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 1rem center;
     background-repeat: no-repeat;
-    background-size: 1.25rem;
-    padding-right: 2.5rem;
-    box-shadow: 
-        0 2px 8px rgba(0, 0, 0, 0.1),
+    background-size: 1.5rem;
+    padding-right: 3rem;
+    box-shadow:
+        0 4px 12px rgba(0, 0, 0, 0.15),
+        0 1px 3px rgba(0, 0, 0, 0.1),
         inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    cursor: pointer;
+    will-change: transform, box-shadow;
+}
+
+.config-mode select:hover {
+    background: rgba(255, 255, 255, 0.11);
+    border-color: rgba(139, 69, 255, 0.3);
+    transform: translateY(-1px);
 }
 
 .config-mode select:focus {
     outline: none;
-    border-color: rgba(139, 69, 255, 0.5);
-    background: rgba(255, 255, 255, 0.12);
-    box-shadow: 
-        0 0 0 2px rgba(139, 69, 255, 0.1),
-        0 4px 12px rgba(0, 0, 0, 0.15),
+    border-color: rgba(139, 69, 255, 0.6);
+    background: rgba(255, 255, 255, 0.13);
+    box-shadow:
+        0 0 0 3px rgba(139, 69, 255, 0.15),
+        0 8px 20px rgba(139, 69, 255, 0.2),
+        0 4px 12px rgba(0, 0, 0, 0.2),
         inset 0 1px 0 rgba(255, 255, 255, 0.15);
-    transform: translateY(-1px);
+    transform: translateY(-2px) scale(1.01);
 }
 
 .config-mode select:disabled {
@@ -362,32 +459,48 @@ body::before {
 /* Score display styles */
 .score-display {
     text-align: center;
-    animation: fadeIn 0.5s ease;
+    animation: fadeInUp 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
 }
 
 .team-info, .opponent-info {
-    margin-bottom: 0.375rem;
+    margin-bottom: 0.5rem;
+    transition: transform 0.3s ease;
+}
+
+.team-info:hover, .opponent-info:hover {
+    transform: scale(1.02);
 }
 
 .team-name {
-    font-size: 0.9rem;
+    font-size: 1rem;
     font-weight: 600;
     color: #A855F7;
-    margin-bottom: 0.25rem;
+    margin-bottom: 0.35rem;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    letter-spacing: 0.015em;
+    text-shadow: 0 2px 8px rgba(168, 85, 247, 0.3);
 }
 
 .score {
-    font-size: 1.6rem;
+    font-size: 2rem;
     font-weight: 700;
     color: #fff;
+    letter-spacing: -0.02em;
+    text-shadow: 0 2px 12px rgba(255, 255, 255, 0.2);
+    font-variant-numeric: tabular-nums;
 }
 
 .vs {
@@ -461,7 +574,7 @@ body::before {
 
 /* Loading state */
 .loading {
-    opacity: 0.7;
+    opacity: 0.8;
     pointer-events: none;
     position: relative;
 }
@@ -471,19 +584,33 @@ body::before {
     position: absolute;
     top: 50%;
     left: 50%;
-    width: 24px;
-    height: 24px;
-    margin: -12px 0 0 -12px;
-    border: 2px solid transparent;
-    border-top: 2px solid #8B45FF;
+    width: 32px;
+    height: 32px;
+    margin: -16px 0 0 -16px;
+    border: 3px solid rgba(139, 69, 255, 0.2);
+    border-top: 3px solid #8B45FF;
+    border-right: 3px solid #A855F7;
     border-radius: 50%;
-    animation: modernSpin 1s linear infinite;
+    animation: modernSpin 0.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
     z-index: 10;
+    box-shadow: 0 0 20px rgba(139, 69, 255, 0.3);
 }
 
 @keyframes modernSpin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+    0% {
+        transform: rotate(0deg);
+        border-top-color: #8B45FF;
+        border-right-color: #A855F7;
+    }
+    50% {
+        border-top-color: #A855F7;
+        border-right-color: #C77DFF;
+    }
+    100% {
+        transform: rotate(360deg);
+        border-top-color: #8B45FF;
+        border-right-color: #A855F7;
+    }
 }
 
 /* Footer */
@@ -553,44 +680,74 @@ body::before {
     top: 0;
     width: 100%;
     height: 100%;
-    background-color: rgba(0, 0, 0, 0.85);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    animation: modalFadeIn 0.3s ease;
+    background-color: rgba(0, 0, 0, 0.88);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    animation: modalFadeIn 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 @keyframes modalFadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    from {
+        opacity: 0;
+        backdrop-filter: blur(0px);
+    }
+    to {
+        opacity: 1;
+        backdrop-filter: blur(12px);
+    }
 }
 
 .game-modal-content {
-    background: linear-gradient(135deg, #0a0a0f, #1a1a2e);
-    margin: 3% auto;
-    padding: 2rem;
-    border-radius: 20px;
+    background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 100%);
+    margin: 2% auto;
+    padding: 2.5rem;
+    border-radius: 24px;
     width: 90%;
-    max-width: 650px;
-    max-height: 85vh;
+    max-width: 700px;
+    max-height: 90vh;
     overflow-y: auto;
-    border: 1px solid rgba(139, 69, 255, 0.3);
-    box-shadow: 
-        0 25px 50px rgba(0, 0, 0, 0.6),
+    border: 1.5px solid rgba(139, 69, 255, 0.3);
+    box-shadow:
+        0 32px 64px rgba(0, 0, 0, 0.7),
+        0 16px 32px rgba(0, 0, 0, 0.5),
         0 0 0 1px rgba(255, 255, 255, 0.1),
-        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        inset 0 1px 0 rgba(255, 255, 255, 0.15);
     color: white;
     position: relative;
-    animation: modalSlideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    animation: modalSlideIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    /* Smooth scrolling */
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Custom scrollbar for modal */
+.game-modal-content::-webkit-scrollbar {
+    width: 8px;
+}
+
+.game-modal-content::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+}
+
+.game-modal-content::-webkit-scrollbar-thumb {
+    background: rgba(139, 69, 255, 0.5);
+    border-radius: 4px;
+    transition: background 0.3s ease;
+}
+
+.game-modal-content::-webkit-scrollbar-thumb:hover {
+    background: rgba(139, 69, 255, 0.7);
 }
 
 @keyframes modalSlideIn {
-    from { 
-        opacity: 0; 
-        transform: translateY(-30px) scale(0.95); 
+    from {
+        opacity: 0;
+        transform: translateY(-40px) scale(0.92);
     }
-    to { 
-        opacity: 1; 
-        transform: translateY(0) scale(1); 
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
     }
 }
 
@@ -1101,21 +1258,38 @@ body::before {
     animation: bounce 1s infinite;
 }
 
+/* Accessibility: Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
 /* Responsive Design for Modal */
 @media (max-width: 768px) {
     .container {
         padding: 0.75rem;
     }
-    
+
+    .logo h1 {
+        font-size: 1.875rem;
+    }
+
+    .logo-icon {
+        font-size: 2rem;
+    }
+
     .dashboard {
         grid-template-columns: 1fr;
-        gap: 0.75rem;
+        gap: 1rem;
     }
-    
+
     .widget {
-        padding: 1rem;
-        border-radius: 14px;
-        min-height: 140px;
+        padding: 1.125rem;
+        border-radius: 18px;
+        min-height: 150px;
     }
     
     .modal-actions {

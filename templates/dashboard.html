@@ -2,9 +2,17 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <meta name="description" content="CheckBall - Your personalized sports hub for live scores and game updates">
+    <meta name="theme-color" content="#0a0a0f">
     <title>CheckBall - Your Personalized Sports Hub</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <style>
+        /* Prevent flash of unstyled content */
+        html { opacity: 0; transition: opacity 0.3s ease; }
+        html.loaded { opacity: 1; }
+    </style>
 </head>
 <body>
     <div class="container">
@@ -219,5 +227,11 @@
     </div>
 
     <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <script>
+        // Remove FOUC and add smooth page load
+        document.addEventListener('DOMContentLoaded', function() {
+            document.documentElement.classList.add('loaded');
+        });
+    </script>
 </body>
 </html>
